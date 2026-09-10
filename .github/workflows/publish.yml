@@ -82,6 +82,11 @@ jobs:
       - name: Install dependencies
         run: 'npm ci'
 
+      - name: Le tag doit être sur main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "Tag hors de main" ; exit 1; }
+
       - name: Release
         # Publishes to npm with a provenance attestation (requires id-token: write above).
         # Lint and build run automatically as part of the release process.
