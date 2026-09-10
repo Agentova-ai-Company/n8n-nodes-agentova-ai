@@ -1,0 +1,3 @@
+# Toute PR demande automatiquement la revue de l'équipe interne Agentova.
+# Combiné au ruleset « Protect Main » (revue des code owners obligatoire).
+* @Agentova-ai-Company/full-dev
