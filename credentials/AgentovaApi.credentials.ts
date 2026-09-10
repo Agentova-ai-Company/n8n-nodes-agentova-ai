@@ -39,7 +39,7 @@ export class AgentovaApi implements ICredentialType {
 	test: ICredentialTestRequest = {
 		request: {
 			baseURL: 'https://api.agentova.ai/v1',
-			url: '/v1/user',
+			url: '/automations',
 		},
 	};
 }

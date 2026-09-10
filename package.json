@@ -1,5 +1,5 @@
 {
-  "name": "n8n-nodes-agentova",
+  "name": "n8n-nodes-agentova-ai",
   "version": "0.0.1-alpha",
   "description": "n8n community node for the Agentova public API — manage automations and receive workspace events (leads, runs, status changes) via webhooks.",
   "license": "MIT",
@@ -28,7 +28,7 @@
     "nodes": ["dist/nodes/Agentova/Agentova.node.js"]
   },
   "devDependencies": {
-    "@n8n/node-cli": "*",
+    "@n8n/node-cli": "^0.47.2",
     "eslint": "9.32.0",
     "prettier": "3.6.2",
     "release-it": "^19.0.4",
