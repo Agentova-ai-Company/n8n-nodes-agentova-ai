@@ -5,7 +5,7 @@
   "license": "MIT",
   "homepage": "https://github.com/Agentova-ai-Company/n8n-nodes-agentova-ai#readme",
   "keywords": ["n8n-community-node-package"],
-  "author": { "name": "Mendrika10", "email": "nataramaroarisoa@gmail.com" },
+  "author": { "name": "Agentova", "email": "agentova.ai@gmail.com", "url": "https://agentova.ai" },
   "publishConfig": { "access": "public", "tag": "alpha" },
   "repository": {
     "type": "git",
