@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+tone_instructions: >-
+  Be pedagogical, calm, and constructive. Explain why something is an issue, not just that it is.
+  Be strict on correctness, security and API-contract conformance, but always respectful.
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary_instructions: >-
+    Summarize the intent of the PR, identify risky changes, and highlight anything that deviates
+    from the Agentova API contract or that could leak a secret. This repository is public.
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    base_branches:
+      - dev
+    ignore_title_keywords:
+      - WIP
+      - DRAFT
+      - "[skip review]"
+    ignore_usernames:
+      - dependabot[bot]
+  path_instructions:
+    - path: .github/**
+      instructions: >-
+        Review GitHub Actions workflows for misconfigurations, security risks (secrets exposure,
+        third-party action pinning, permission scopes, OIDC publishing), and best practices.
+    - path: "**/*.ts"
+      instructions: >-
+        Check every API call against the Agentova API v1 contract (paths, methods, fields, error
+        codes). Flag any hardcoded key, token, personal email or workspace identifier.

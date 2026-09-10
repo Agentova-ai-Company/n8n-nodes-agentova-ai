@@ -1,0 +1,28 @@
+# Refuse toute PR vers main qui ne vient pas de dev — même job que dans les
+# autres dépôts Agentova. Son nom est exigé par le ruleset « Protect Main ».
+# La CI (lint + build) vit dans ci.yml.
+name: Check source branch
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  check-source-branch:
+    name: Check source branch (dev→main only)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure PR is from dev
+        run: |
+          if [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "ERROR: PRs into main must come from dev only"
+            echo "Current source branch: ${{ github.head_ref }}"
+            echo "Allowed source branch: dev"
+            echo "To merge into main: merge your branch into dev first, then open a PR dev → main"
+            exit 1
+          fi
+          echo "OK: PR is from dev"
