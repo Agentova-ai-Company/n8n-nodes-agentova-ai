@@ -1,0 +1,38 @@
+{
+  "name": "n8n-nodes-agentova",
+  "version": "0.0.1-alpha",
+  "description": "n8n community node for the Agentova public API — manage automations and receive workspace events (leads, runs, status changes) via webhooks.",
+  "license": "MIT",
+  "homepage": "https://github.com/Agentova-ai-Company/n8n-nodes-agentova-ai#readme",
+  "keywords": ["n8n-community-node-package"],
+  "author": { "name": "Mendrika10", "email": "nataramaroarisoa@gmail.com" },
+  "publishConfig": { "access": "public", "tag": "alpha" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Agentova-ai-Company/n8n-nodes-agentova-ai.git"
+  },
+  "scripts": {
+    "build": "n8n-node build",
+    "build:watch": "tsc --watch",
+    "dev": "n8n-node dev",
+    "lint": "n8n-node lint",
+    "lint:fix": "n8n-node lint --fix",
+    "release": "n8n-node release",
+    "prepublishOnly": "n8n-node prerelease"
+  },
+  "files": ["dist"],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "strict": true,
+    "credentials": ["dist/credentials/AgentovaApi.credentials.js"],
+    "nodes": ["dist/nodes/Agentova/Agentova.node.js"]
+  },
+  "devDependencies": {
+    "@n8n/node-cli": "*",
+    "eslint": "9.32.0",
+    "prettier": "3.6.2",
+    "release-it": "^19.0.4",
+    "typescript": "5.9.2"
+  },
+  "peerDependencies": { "n8n-workflow": "*" }
+}
