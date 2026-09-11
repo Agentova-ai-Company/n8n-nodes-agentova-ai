@@ -36,8 +36,9 @@
 #
 #   - The package already exists on npm (staged publishing cannot create a
 #     brand-new package; the very first version was published by hand).
-#   - npm CLI ≥ 11.5 for trusted publishing and `npm stage`: the current
-#     Node.js LTS ships it.
+#   - npm CLI ≥ 11.15.0 and Node.js ≥ 22.14.0 for staged publishing (npm
+#     docs, "Staged publishing"). The current Node.js LTS ships a newer npm;
+#     a step below fails fast if the runner ever falls short.
 #   - @n8n/node-cli ≥ 0.23.0 for the provenance flag (see package.json).
 #
 # ─── RELEASE PROCESS ───────────────────────────────────────────────────────────
@@ -81,16 +82,34 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      # Épinglé au commit (pas au tag mutable) : ce workflow obtient des jetons
+      # OIDC pour npm, son code ne doit pas pouvoir changer sans relecture.
+      # `persist-credentials: false` : le `git fetch origin main` plus bas lit
+      # un dépôt public, il n'a pas besoin de jeton ; les scripts lancés par
+      # npm ne doivent pas en trouver un sur le disque.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 'lts/*'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      # Le staging exige npm ≥ 11.15.0 (doc npm « Staged publishing »). On le
+      # vérifie AVANT d'installer quoi que ce soit : un runner trop ancien
+      # échouerait sinon après lint et build, et après avoir exécuté des
+      # scripts de dépendances pour rien.
+      - name: npm ≥ 11.15.0
+        run: |
+          node -e '
+            const [maj, min] = process.argv[1].split(".").map(Number);
+            if (maj < 11 || (maj === 11 && min < 15)) {
+              console.error(`npm ${process.argv[1]} trop ancien : le staging exige 11.15.0+`);
+              process.exit(1);
+            }
+          ' "$(npm --version)"
 
       - name: Le tag doit être sur main
         run: |
@@ -104,6 +123,13 @@ jobs:
             echo "Tag $GITHUB_REF_NAME ≠ version $version du package.json"
             exit 1
           fi
+
+      # Les gardes ci-dessus ont tourné : aucun script de dépendance n'est
+      # exécuté pour un tag refusé. `--ignore-scripts` : lint et build n'ont
+      # besoin d'aucun script d'installation (vérifié), et un script compromis
+      # tournerait ici avec `id-token: write` dans l'environnement.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
 
       - name: Lint
         run: npm run lint
