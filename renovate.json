@@ -1,0 +1,6 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>Agentova-ai-Company/agentova-platform//packages/conventions/renovate-config"
+  ]
+}
