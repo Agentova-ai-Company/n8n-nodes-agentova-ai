@@ -1,5 +1,6 @@
 import { NodeConnectionTypes, type INodeType, type INodeTypeDescription } from 'n8n-workflow';
 import { automationDescription } from './resources/automation';
+import { searchAutomations } from './methods/listSearch';
 
 export class Agentova implements INodeType {
 	description: INodeTypeDescription = {
@@ -40,5 +41,11 @@ export class Agentova implements INodeType {
 			},
 			...automationDescription,
 		],
+	};
+
+	methods = {
+		listSearch: {
+			searchAutomations,
+		},
 	};
 }

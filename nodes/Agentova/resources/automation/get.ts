@@ -7,12 +7,26 @@ const showOnlyForAutomationGet = {
 
 export const automationGetDescription: INodeProperties[] = [
 	{
-		displayName: 'Automation ID',
+		displayName: 'Automation',
 		name: 'automationId',
-		type: 'string',
+		type: 'resourceLocator',
 		required: true,
 		displayOptions: { show: showOnlyForAutomationGet },
-		default: '',
-		description: 'The ID of the automation to retrieve',
+		default: { mode: 'list', value: '' },
+		description: 'The automation to retrieve',
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				typeOptions: { searchListMethod: 'searchAutomations', searchable: true },
+			},
+			{
+				displayName: 'ID',
+				name: 'id',
+				type: 'string',
+				placeholder: 'e.g. 3fa85f64-5717-4562-b3fc-2c963f66afa6',
+			},
+		],
 	},
 ];
