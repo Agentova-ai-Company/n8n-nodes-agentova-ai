@@ -5,98 +5,141 @@
 # requirement. Provenance lets anyone cryptographically verify that a package
 # was built by this exact workflow, from this exact repository and commit.
 #
+# ─── HOW PUBLISHING WORKS HERE: STAGED PUBLISHING ──────────────────────────────
+#
+# This workflow never puts a version live on its own. It STAGES it:
+#
+#   1. a version tag is pushed on main → this job runs lint, build, then
+#      `npm stage publish`, which uploads the package to npm in a non-public,
+#      pending state (npm "staged publishing");
+#   2. a package maintainer reviews it on npmjs.com ("Staged Packages" tab)
+#      and approves it with 2FA. Only then does the version become public.
+#
+# Authentication is npm Trusted Publishing (OIDC): npm trusts the identity of
+# THIS workflow file in THIS repository, and issues a short-lived token for
+# the run. No npm token is stored anywhere in this repository. The trusted
+# publisher is deliberately configured WITHOUT the direct `npm publish`
+# permission, so a compromised CI could at most stage a version — never ship
+# one without a human approval.
+#
+# ─── ONE-TIME SETUP (already done by the package maintainer) ────────────────────
+#
+#   npmjs.com → package n8n-nodes-agentova-ai → Settings → Publish access
+#   → Trusted Publishers → GitHub Actions:
+#       Organization or user : Agentova-ai-Company
+#       Repository           : n8n-nodes-agentova-ai
+#       Workflow filename    : publish.yml
+#       Environment name     : (blank)
+#   Leave the "publish" command permission unchecked: staging only.
+#
 # ─── PREREQUISITES ─────────────────────────────────────────────────────────────
 #
-# @n8n/node-cli ≥ 0.23.0 is required. Earlier versions do not support the
-# provenance flag passed by `npm run release` in CI, and the publish step will
-# fail. Check the version installed in this project with:
-#
-#   npm list @n8n/node-cli
-#
-# ─── ONE-TIME SETUP ────────────────────────────────────────────────────────────
-#
-# Option A — OIDC Trusted Publishing (recommended, no long-lived secrets):
-#   1. Log in to npmjs.com and open the n8n-nodes-agentova-ai package settings.
-#   2. Under "Publish access" → "Trusted Publishers", click "Add a publisher".
-#   3. Select GitHub Actions and fill in:
-#        Repository owner: Agentova-ai-Company
-#        Repository name:  n8n-nodes-agentova-ai
-#        Workflow name:    publish.yml
-#        Environment:      (leave blank unless you use GitHub Environments)
-#   4. Leave the NPM_TOKEN secret unset in this repository. GitHub's OIDC
-#      token is used instead — no secret ever touches your repo settings.
-#
-# Option B — npm Automation Token (fallback):
-#   1. On npmjs.com: Access Tokens → Generate New Token → Granular Access Token.
-#      Scope it to this package with "Read and write" publish permission.
-#   2. In GitHub: Settings → Secrets and variables → Actions → New secret.
-#      Name it NPM_TOKEN and paste the token value.
-#
-# Both options work with --provenance. Provenance is signed by GitHub's OIDC
-# infrastructure regardless of how npm authentication is handled.
-#
-# ─── TAG CONVENTION ────────────────────────────────────────────────────────────
-#
-# This workflow triggers on tags matching "*.*.*" (e.g. 0.2.0).
-# If you prefer tags with a "v" prefix (e.g. v0.2.0), change the filter to:
-#   tags: ['v*.*.*']
+#   - The package already exists on npm (staged publishing cannot create a
+#     brand-new package; the very first version was published by hand).
+#   - npm CLI ≥ 11.15.0 and Node.js ≥ 22.14.0 for staged publishing (npm
+#     docs, "Staged publishing"). The current Node.js LTS ships a newer npm;
+#     a step below fails fast if the runner ever falls short.
+#   - @n8n/node-cli ≥ 0.23.0 for the provenance flag (see package.json).
 #
 # ─── RELEASE PROCESS ───────────────────────────────────────────────────────────
 #
-# Run the following command locally to start an interactive release:
+# `npm run release` (n8n-node release) is NOT used here: locally it commits
+# and pushes straight to main, which the branch rulesets forbid. Instead:
 #
-#   npm run release
+#   1. bump "version" in package.json (and package-lock.json) on dev, in a PR,
+#      then merge dev → main as usual;
+#   2. a member of the full-dev team tags the main commit with EXACTLY that
+#      version (e.g. `git tag 0.2.0 && git push origin 0.2.0`) — tag creation
+#      is restricted to that team by the "Protect release tags" ruleset;
+#   3. this job stages the version; a maintainer approves it on npmjs.com.
 #
-# This will lint, build, prompt for a version bump, update the changelog,
-# commit, tag, and push — which triggers this workflow to publish to npm.
+# A tag that is not on main, or that differs from package.json's version, is
+# refused before anything is uploaded.
+#
+# ─── TAG CONVENTION ────────────────────────────────────────────────────────────
+#
+# Tags match "*.*.*" (e.g. 0.2.0, 0.0.2-alpha) — no "v" prefix, so that the tag
+# name is the package version and can be compared to package.json as is.
 
 name: Publish
 
 on:
   push:
     tags:
-      # Matches 0.1.0, 1.2.3, 2.0.0-rc.1, etc.
-      # See "TAG CONVENTION" above if you prefer tags with a "v" prefix.
+      # Matches 0.1.0, 1.2.3, 2.0.0-rc.1, etc. (no "v" prefix, see above).
       - '*.*.*'
 
 jobs:
   publish:
-    name: Publish to npm
+    name: Stage on npm
     runs-on: ubuntu-latest
 
     permissions:
-      # Required to mint an OIDC token for npm provenance attestation.
+      # Required to mint the OIDC token used for trusted publishing and for
+      # the provenance attestation.
       id-token: write
       # Scoped down from the default (write) for least-privilege publishing.
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      # Épinglé au commit (pas au tag mutable) : ce workflow obtient des jetons
+      # OIDC pour npm, son code ne doit pas pouvoir changer sans relecture.
+      # `persist-credentials: false` : le `git fetch origin main` plus bas lit
+      # un dépôt public, il n'a pas besoin de jeton ; les scripts lancés par
+      # npm ne doivent pas en trouver un sur le disque.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 'lts/*'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: 'npm ci'
+      # Le staging exige npm ≥ 11.15.0 (doc npm « Staged publishing »). On le
+      # vérifie AVANT d'installer quoi que ce soit : un runner trop ancien
+      # échouerait sinon après lint et build, et après avoir exécuté des
+      # scripts de dépendances pour rien.
+      - name: npm ≥ 11.15.0
+        run: |
+          node -e '
+            const [maj, min] = process.argv[1].split(".").map(Number);
+            if (maj < 11 || (maj === 11 && min < 15)) {
+              console.error(`npm ${process.argv[1]} trop ancien : le staging exige 11.15.0+`);
+              process.exit(1);
+            }
+          ' "$(npm --version)"
 
       - name: Le tag doit être sur main
         run: |
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "Tag hors de main" ; exit 1; }
 
-      - name: Release
-        # Publishes to npm with a provenance attestation (requires id-token: write above).
-        # Lint and build run automatically as part of the release process.
-        #
-        # Option A (OIDC): leave NPM_TOKEN unset — the token step is skipped and
-        #   npm uses the OIDC exchange instead.
-        # Option B (token): set NPM_TOKEN in repo secrets — it is written to
-        #   .npmrc here before publishing.
+      - name: Le tag doit être la version du package.json
         run: |
-          [ -n "$NPM_TOKEN" ] && npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-          npm run release
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME ≠ version $version du package.json"
+            exit 1
+          fi
+
+      # Les gardes ci-dessus ont tourné : aucun script de dépendance n'est
+      # exécuté pour un tag refusé. `--ignore-scripts` : lint et build n'ont
+      # besoin d'aucun script d'installation (vérifié), et un script compromis
+      # tournerait ici avec `id-token: write` dans l'environnement.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      # Uploads the package in a pending state: nothing is public until a
+      # maintainer approves it on npmjs.com. `--provenance` attaches the
+      # signed build attestation n8n requires; `--access public` is explicit
+      # for clarity (unscoped packages are public anyway).
+      - name: Stage publish (approbation manuelle sur npmjs.com)
+        run: npm stage publish --access public --provenance
