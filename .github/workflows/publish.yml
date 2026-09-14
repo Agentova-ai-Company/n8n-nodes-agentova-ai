@@ -141,5 +141,13 @@ jobs:
       # maintainer approves it on npmjs.com. `--provenance` attaches the
       # signed build attestation n8n requires; `--access public` is explicit
       # for clarity (unscoped packages are public anyway).
+      # `RELEASE_MODE` : le script `prepublishOnly` du package.json appelle
+      # `n8n-node prerelease`, une garde du CLI n8n qui refuse toute
+      # publication sans cette variable (elle force `npm run release`, que
+      # nous n'utilisons pas — voir l'en-tête). Le CLI la pose lui-même sur
+      # son propre chemin CI ; sans elle, le staging échoue après lint et
+      # build (constaté sur le tag 0.0.2-alpha).
       - name: Stage publish (approbation manuelle sur npmjs.com)
         run: npm stage publish --access public --provenance
+        env:
+          RELEASE_MODE: 'true'
