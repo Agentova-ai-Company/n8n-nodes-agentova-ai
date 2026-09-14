@@ -40,6 +40,7 @@ export class AgentovaApi implements ICredentialType {
 		request: {
 			baseURL: 'https://api.agentova.ai/v1',
 			url: '/automations',
+			qs: { limit: 1 },
 		},
 	};
 }

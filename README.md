@@ -2,7 +2,9 @@
 
 Official n8n community node for the **Agentova public API v1** (`@n8n/node-cli`, declarative style).
 
-## Status — B1: npm publishing pipeline
+## Status
+
+### B1 — npm publishing pipeline
 
 - [x] Project scaffolded (`declarative/custom` template — Bearer token auth, base URL `https://api.agentova.ai/v1`)
 - [x] `package.json` conforms to n8n's community node requirements: name `n8n-nodes-agentova-ai`,
@@ -11,9 +13,15 @@ Official n8n community node for the **Agentova public API v1** (`@n8n/node-cli`,
 - [x] `.github/workflows/publish.yml` — publishes to npm with provenance on push of a
       `*.*.*` version tag
 - [x] `.github/workflows/ci.yml` — lint + build on every PR/push to `main`/`dev`
-- Node/credentials content (`Automation` resource: list/get/activate/pause, webhook trigger):
-  **out of scope for B1** — the scaffold ships the template's placeholder `User`/`Company`
-  resources, replaced with the real Agentova resources in B2/B3.
+
+### B2 — credentials & main node
+
+- [x] `AgentovaApi` credential: Bearer auth (`agk_live_...`), connection test against
+      `GET /automations?limit=1`
+- [x] `Automation` resource: List (cursor pagination, filters on `status`/`type`/`agent_id`),
+      Get, Activate, Pause — matches the v1 API contract exactly
+- Webhook trigger (`run.completed`, `lead.created`, `automation.status_changed`): **out of
+  scope for B2**, part of B3
 
 ## Develop locally
 
@@ -25,10 +33,10 @@ npm run dev   # runs a local n8n instance with this node loaded
 ```
 
 `requestDefaults.baseURL` and the credential's `test.request.baseURL` point to
-`https://api.agentova.ai/v1` (production) — no mock override wired yet, since B1 only proves
-the publish pipeline and doesn't call the API. Wiring a mock URL for local development is part
-of B2, once the OpenAPI contract file is available (the Zapier connector and doc portal live in
-their own separate repositories).
+`https://api.agentova.ai/v1` (production) — no mock override wired yet, since the real API
+isn't live in production yet either. Wiring a mock URL (`annexes/openapi-v1-draft.yaml` via
+`@stoplight/prism-cli`) for local development happens once that file is shared (the Zapier
+connector and doc portal live in their own separate repositories).
 
 ## Publishing
 
