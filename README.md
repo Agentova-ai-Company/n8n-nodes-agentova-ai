@@ -12,7 +12,7 @@ Official n8n community node for the **Agentova public API v1** (`@n8n/node-cli`,
       `publishConfig.tag=alpha` (for the `0.0.1-alpha` prerelease)
 - [x] `.github/workflows/publish.yml` — publishes to npm with provenance on push of a
       `*.*.*` version tag
-- [x] `.github/workflows/ci.yml` — lint + build on every PR/push to `main`/`dev`
+- [x] `.github/workflows/ci.yml` — lint + test + build on every PR/push to `main`/`dev`
 
 ### B2 — credentials & main node
 
@@ -20,6 +20,10 @@ Official n8n community node for the **Agentova public API v1** (`@n8n/node-cli`,
       `GET /automations?limit=1`
 - [x] `Automation` resource: List (cursor pagination, filters on `status`/`type`/`agent_id`),
       Get, Activate, Pause — matches the v1 API contract exactly
+- [x] `Automation ID` fields use a Resource Locator (`From List` + `ID` modes), per n8n's
+      verification UX guidelines, backed by `GET /automations`
+- [x] Vitest suite (`npm test`): the list-search helper, and a regression guard checking the
+      node's `status`/`type` enums against the API contract
 - Webhook trigger (`run.completed`, `lead.created`, `automation.status_changed`): **out of
   scope for B2**, part of B3
 
@@ -28,6 +32,7 @@ Official n8n community node for the **Agentova public API v1** (`@n8n/node-cli`,
 ```bash
 npm install
 npm run lint
+npm test
 npm run build
 npm run dev   # runs a local n8n instance with this node loaded
 ```
