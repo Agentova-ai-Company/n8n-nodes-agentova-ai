@@ -41,10 +41,20 @@ npm run dev   # runs a local n8n instance with this node loaded
 
 The credential's **Base URL** field defaults to `https://api.agentova.ai/v1` (production). Leave
 it as-is unless Agentova gives you another URL — a local mock, or the test workspace promised at
-the 80% milestone. For local development against a mock, set the credential's Base URL to the
-mock server's address (e.g. `@stoplight/prism-cli` on `http://127.0.0.1:4010`, or a local server
-of your own — the OpenAPI contract file itself hasn't been shared yet, so there's nothing to
-commit to this repo).
+the 80% milestone.
+
+## API contract
+
+- **Source of truth**: `annexes/openapi-v1-draft.yaml`, provided by Agentova with the brief. It
+  wins over any code, doc or mock — the node's enums are checked against it in `npm test`.
+- **Local mock**: `npx @stoplight/prism-cli mock annexes/openapi-v1-draft.yaml` starts a server
+  on `http://127.0.0.1:4010` that answers the contract's routes with its examples. Point the
+  credential's Base URL at it. It simulates neither persistence between calls, nor real webhook
+  delivery, nor rate limiting.
+- **Availability of the real API** is described at the top of the file (`info.description`): a
+  route not served yet answers `404 route_not_found`.
+- The contract is not edited in this repo. Any gap between the contract and observed behaviour
+  is reported to Agentova; every contract change is announced (see the changelog in the file).
 
 ## Publishing
 
