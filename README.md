@@ -26,8 +26,21 @@ Official n8n community node for the **Agentova public API v1** (`@n8n/node-cli`,
       node's `status`/`type` enums against the API contract
 - [x] Credential exposes a **Base URL** field (default: production) — swap it for a mock or the
       test workspace without touching code
-- Webhook trigger (`run.completed`, `lead.created`, `automation.status_changed`): **out of
-  scope for B2**, part of B3
+
+### B3 — trigger node
+
+- [x] `AgentovaTrigger`: `webhookMethods.default.{checkExists,create,delete}` subscribe/unsubscribe
+      on workflow activation/deactivation, no duplicate subscription on n8n restart
+- [x] 3 selectable events (`automation.status_changed`, `lead.created`, `run.completed`), matching
+      the contract's `WebhookEvent` enum exactly
+- [x] Incoming deliveries are verified against `X-Agentova-Signature` (HMAC-SHA256 on the raw
+      body, constant-time comparison, 5-minute anti-replay window) before starting the workflow —
+      an unsigned or forged request is rejected with `401` and never reaches it
+- [x] `checkExists` re-checks `GET /webhooks` and forgets a subscription that was deleted or
+      disabled after prolonged delivery failures, so n8n recreates it instead of staying silently
+      unsubscribed
+- [x] Vitest suite covers the full webhook lifecycle: create/delete, signed/invalid/stale
+      deliveries, and the `checkExists` edge cases above
 
 ## Develop locally
 
