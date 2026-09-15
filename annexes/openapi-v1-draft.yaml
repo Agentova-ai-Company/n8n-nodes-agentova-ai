@@ -66,7 +66,9 @@ info:
     paramètres inconnus ; sens de `403` (accès du workspace au service, pas
     un droit par clé) ; sémantique des statuts ; périmètre Meta de la famille
     `social_*` ; format de livraison des webhooks (`callbacks`) et signature ;
-    section « Disponibilité ».
+    section « Disponibilité » ; en-têtes (`Cache-Control`, `X-RateLimit-*`)
+    déclarés sur chaque réponse ; `data` et `secret` requis ; codes
+    `automation_not_controllable` (422) et `webhook_not_found` (404).
 servers:
   - url: https://api.agentova.ai/v1
     description: "Production (base URL à confirmer — [À CLARIFIER] ; l'URL réelle est communiquée avec le workspace de test au jalon 80 %)"
@@ -105,6 +107,8 @@ paths:
         '200':
           description: Liste paginée d'automatisations
           headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
             X-RateLimit-Limit:
               $ref: '#/components/headers/X-RateLimit-Limit'
             X-RateLimit-Remaining:
@@ -117,6 +121,7 @@ paths:
                 allOf:
                   - $ref: '#/components/schemas/PaginatedResponse'
                   - type: object
+                    required: [data]
                     properties:
                       data:
                         type: array
@@ -152,6 +157,15 @@ paths:
       responses:
         '200':
           description: Automatisation trouvée
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
           content:
             application/json:
               schema:
@@ -169,9 +183,12 @@ paths:
       summary: Changer le statut (activer / mettre en pause)
       description: >
         Idempotent : re-pauser une automatisation déjà en pause renvoie 200.
-        422 si le statut cible est draft/error (non pilotable par l'API).
-        Pas encore servi par l'API réelle (voir « Disponibilité ») :
-        `404 route_not_found` en attendant.
+        Le corps n'accepte que `active` et `paused` (toute autre valeur → 400
+        `invalid_request`). 422 `automation_not_controllable` si
+        l'automatisation est actuellement `draft` ou `error` : elle n'est pas
+        pilotable par l'API tant qu'elle n'a pas été mise en état depuis
+        l'application. Pas encore servi par l'API réelle (voir
+        « Disponibilité ») : `404 route_not_found` en attendant.
       parameters:
         - $ref: '#/components/parameters/AutomationId'
       requestBody:
@@ -190,6 +207,15 @@ paths:
       responses:
         '200':
           description: Statut mis à jour (ou déjà dans cet état)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
           content:
             application/json:
               schema:
@@ -203,11 +229,26 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          description: Statut cible non pilotable par l'API (draft/error)
+          description: L'automatisation est en `draft` ou `error` — non pilotable par l'API
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: "automation_not_controllable"
+                  message: "Cette automatisation est en brouillon ou en erreur : activez-la d'abord depuis l'application"
+                  details:
+                    status: "draft"
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -223,12 +264,22 @@ paths:
       responses:
         '200':
           description: Liste paginée de runs
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
           content:
             application/json:
               schema:
                 allOf:
                   - $ref: '#/components/schemas/PaginatedResponse'
                   - type: object
+                    required: [data]
                     properties:
                       data:
                         type: array
@@ -259,12 +310,22 @@ paths:
       responses:
         '200':
           description: Liste paginée de runs
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
           content:
             application/json:
               schema:
                 allOf:
                   - $ref: '#/components/schemas/PaginatedResponse'
                   - type: object
+                    required: [data]
                     properties:
                       data:
                         type: array
@@ -287,6 +348,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RouteNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -314,12 +377,22 @@ paths:
       responses:
         '200':
           description: Liste paginée de leads
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
           content:
             application/json:
               schema:
                 allOf:
                   - $ref: '#/components/schemas/PaginatedResponse'
                   - type: object
+                    required: [data]
                     properties:
                       data:
                         type: array
@@ -342,6 +415,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RouteNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -353,10 +428,20 @@ paths:
       responses:
         '200':
           description: Liste des abonnements
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
           content:
             application/json:
               schema:
                 type: object
+                required: [data]
                 properties:
                   data:
                     type: array
@@ -364,6 +449,8 @@ paths:
                       $ref: '#/components/schemas/Webhook'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RouteNotFound'
     post:
       operationId: createWebhook
       summary: S'abonner à des événements
@@ -427,12 +514,22 @@ paths:
       responses:
         '201':
           description: Abonnement créé — le secret n'est retourné qu'une seule fois
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
           content:
             application/json:
               schema:
                 allOf:
                   - $ref: '#/components/schemas/Webhook'
                   - type: object
+                    required: [secret]
                     properties:
                       secret:
                         type: string
@@ -446,12 +543,23 @@ paths:
                 secret: "whsec_5f8a3c1e9b2d4f6a8c0e2b4d6f8a0c2e"
         '400':
           description: Payload invalide (ex. URL non HTTPS, adresse privée)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RouteNotFound'
 
   /webhooks/{id}:
     delete:
@@ -468,14 +576,40 @@ paths:
       responses:
         '204':
           description: Abonnement supprimé
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Webhook déjà supprimé ou inexistant
+          description: >
+            Abonnement absent de ce workspace, déjà supprimé ou inexistant
+            (`webhook_not_found` — la suppression n'est pas idempotente : 204
+            une seule fois) ; ou route pas encore servie (`route_not_found`).
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: "webhook_not_found"
+                  message: "Abonnement introuvable dans ce workspace"
+                  details: {}
 
 components:
   securitySchemes:
@@ -489,6 +623,11 @@ components:
         est insensible à la casse. Une clé révoquée est refusée immédiatement.
 
   headers:
+    Cache-Control:
+      description: Toujours `no-store` (données personnelles, aucun cache intermédiaire)
+      schema:
+        type: string
+        enum: [no-store]
     X-RateLimit-Limit:
       description: Nombre de requêtes autorisées par fenêtre (par clé)
       schema:
@@ -532,6 +671,15 @@ components:
   responses:
     BadRequest:
       description: Paramètre de requête ou corps invalide (`details.parameter` nomme le fautif)
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
       content:
         application/json:
           schema:
@@ -545,6 +693,15 @@ components:
                 max: 100
     Unauthorized:
       description: Clé absente, mal formée, invalide ou révoquée (indistinguables, exprès)
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
       content:
         application/json:
           schema:
@@ -559,6 +716,15 @@ components:
         Clé valide, mais le workspace n'a pas (ou plus) accès au service —
         abonnement bloqué ou absent. Ce n'est pas un droit par clé : il n'y a
         pas de permissions par clé en v1.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
       content:
         application/json:
           schema:
@@ -573,6 +739,15 @@ components:
         Ressource absente de ce workspace (même réponse qu'elle existe
         ailleurs ou nulle part), OU route inconnue / pas encore servie
         (`route_not_found`).
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
       content:
         application/json:
           schema:
@@ -582,9 +757,31 @@ components:
               code: "automation_not_found"
               message: "Automatisation introuvable dans ce workspace"
               details: {}
+    RouteNotFound:
+      description: Route inconnue sous `/v1`, ou route du contrat pas encore servie par l'API réelle (voir « Disponibilité »)
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: "route_not_found"
+              message: "Route inconnue, ou pas encore disponible dans cette version de l'API"
+              details: {}
     RateLimited:
       description: Quota dépassé (par clé, ou trop d'échecs d'authentification depuis une adresse)
       headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
         Retry-After:
           description: Secondes avant de réessayer
           schema:
@@ -614,14 +811,18 @@ components:
         volumineux et 415 type de contenu non supporté, statut HTTP conservé,
         raison dans `details.reason`) · `invalid_api_key` (401) ·
         `workspace_access_denied` (403) · `automation_not_found` (404) ·
-        `route_not_found` (404 : chemin inconnu ou route pas encore servie) ·
-        `rate_limited` (429) · `internal_error` (500, message générique).
+        `webhook_not_found` (404) · `route_not_found` (404 : chemin inconnu ou
+        route pas encore servie) · `automation_not_controllable` (422 :
+        automatisation en `draft` ou `error`) · `rate_limited` (429) ·
+        `internal_error` (500, message générique).
       enum:
         - invalid_request
         - invalid_api_key
         - workspace_access_denied
         - automation_not_found
+        - webhook_not_found
         - route_not_found
+        - automation_not_controllable
         - rate_limited
         - internal_error
 
