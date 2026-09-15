@@ -68,7 +68,10 @@ info:
     `social_*` ; format de livraison des webhooks (`callbacks`) et signature ;
     section « Disponibilité » ; en-têtes (`Cache-Control`, `X-RateLimit-*`)
     déclarés sur chaque réponse ; `data` et `secret` requis ; codes
-    `automation_not_controllable` (422) et `webhook_not_found` (404).
+    `automation_not_controllable` (422) et `webhook_not_found` (404) ; 403 et
+    429 déclarés sur toute opération ; champs requis de `Run`, `Lead`,
+    `Webhook` ; livraison webhook typée par événement (`discriminator`) et
+    sans authentification Bearer héritée.
 servers:
   - url: https://api.agentova.ai/v1
     description: "Production (base URL à confirmer — [À CLARIFIER] ; l'URL réelle est communiquée avec le workspace de test au jalon 80 %)"
@@ -289,6 +292,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '429':
@@ -348,6 +353,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/RouteNotFound'
         '429':
@@ -415,6 +422,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/RouteNotFound'
         '429':
@@ -449,8 +458,12 @@ paths:
                       $ref: '#/components/schemas/Webhook'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/RouteNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
     post:
       operationId: createWebhook
       summary: S'abonner à des événements
@@ -493,6 +506,9 @@ paths:
           '{$request.body#/url}':
             post:
               summary: Livraison d'un événement à l'URL abonnée
+              # Aucune authentification Bearer vers l'URL du client : seule la
+              # signature HMAC (en-tête X-Agentova-Signature) authentifie l'envoi.
+              security: []
               requestBody:
                 required: true
                 content:
@@ -558,8 +574,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/RouteNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
 
   /webhooks/{id}:
     delete:
@@ -587,6 +607,8 @@ paths:
               $ref: '#/components/headers/X-RateLimit-Reset'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: >
             Abonnement absent de ce workspace, déjà supprimé ou inexistant
@@ -611,6 +633,8 @@ paths:
                   message: "Abonnement introuvable dans ce workspace"
                   details: {}
 
+        '429':
+          $ref: '#/components/responses/RateLimited'
 components:
   securitySchemes:
     bearerAuth:
@@ -914,6 +938,7 @@ components:
 
     Run:
       type: object
+      required: [id, automation_id, status, trigger_type, occurred_at, actions, lead_id]
       properties:
         id:
           type: string
@@ -946,6 +971,7 @@ components:
 
     Lead:
       type: object
+      required: [id, source, agent_id, name, email, phone, custom_fields, created_at]
       properties:
         id:
           type: string
@@ -972,6 +998,7 @@ components:
 
     Webhook:
       type: object
+      required: [id, url, events, created_at, disabled_at]
       properties:
         id:
           type: string
@@ -992,25 +1019,68 @@ components:
           nullable: true
           description: Posé quand l'abonnement a été désactivé après des échecs prolongés.
 
-    WebhookDelivery:
+    WebhookDeliveryBase:
       type: object
-      description: Corps envoyé à l'URL abonnée. `data` est la ressource concernée par l'événement.
-      required: [id, type, created_at, data]
+      required: [id, created_at]
       properties:
         id:
           type: string
           description: Identifiant opaque préfixé `evt_`, unique par événement — clé de déduplication du récepteur.
-        type:
-          $ref: '#/components/schemas/WebhookEvent'
         created_at:
           type: string
           format: date-time
-        data:
-          type: object
-          description: >
-            La ressource concernée, selon `type` : un `Lead` pour
-            `lead.created`, un `Run` pour `run.completed`, une `Automation`
-            pour `automation.status_changed`.
+
+    LeadCreatedDelivery:
+      allOf:
+        - $ref: '#/components/schemas/WebhookDeliveryBase'
+        - type: object
+          required: [type, data]
+          properties:
+            type:
+              type: string
+              enum: [lead.created]
+            data:
+              $ref: '#/components/schemas/Lead'
+
+    RunCompletedDelivery:
+      allOf:
+        - $ref: '#/components/schemas/WebhookDeliveryBase'
+        - type: object
+          required: [type, data]
+          properties:
+            type:
+              type: string
+              enum: [run.completed]
+            data:
+              $ref: '#/components/schemas/Run'
+
+    AutomationStatusChangedDelivery:
+      allOf:
+        - $ref: '#/components/schemas/WebhookDeliveryBase'
+        - type: object
+          required: [type, data]
+          properties:
+            type:
+              type: string
+              enum: [automation.status_changed]
+            data:
+              $ref: '#/components/schemas/Automation'
+
+    WebhookDelivery:
+      description: >
+        Corps envoyé à l'URL abonnée. `type` (valeur de `WebhookEvent`)
+        détermine la forme de `data` : un `Lead` pour `lead.created`, un `Run`
+        pour `run.completed`, une `Automation` pour `automation.status_changed`.
+      oneOf:
+        - $ref: '#/components/schemas/LeadCreatedDelivery'
+        - $ref: '#/components/schemas/RunCompletedDelivery'
+        - $ref: '#/components/schemas/AutomationStatusChangedDelivery'
+      discriminator:
+        propertyName: type
+        mapping:
+          lead.created: '#/components/schemas/LeadCreatedDelivery'
+          run.completed: '#/components/schemas/RunCompletedDelivery'
+          automation.status_changed: '#/components/schemas/AutomationStatusChangedDelivery'
       example:
         id: "evt_01HZX7B2C3D4E5F6G7H8J9K0L1"
         type: "lead.created"
