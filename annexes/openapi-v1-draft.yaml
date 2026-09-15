@@ -1,0 +1,1096 @@
+openapi: 3.0.3
+info:
+  title: Agentova Public API
+  version: "1.0.0-draft.2"
+  description: >
+    API publique Agentova v1 (DRAFT). Source de vérité machine pour le contrat
+    décrit dans 4-CONTRAT-API.md. Statut : draft validé par le référent —
+    toute modification est annoncée aux deux devs, jamais de changement silencieux.
+
+
+    ## Conventions valables sur toute l'API
+
+    - **Identifiants** : chaînes OPAQUES, préfixées par leur type (`aut_`
+      automatisation, `agt_` agent, `run_` exécution, `lea_` lead, `whk_`
+      abonnement, `evt_` événement). Un connecteur les stocke et les renvoie
+      tels quels ; il ne les valide ni ne les interprète jamais (ni longueur,
+      ni alphabet). Ce ne sont PAS des UUID.
+
+    - **Erreurs** : corps constant `{ "error": { "code", "message", "details" } }`
+      pour toute réponse 4xx/5xx. Le `code` est stable et énuméré
+      (`ErrorCode`), le `message` est en français et peut changer, `details`
+      nomme le paramètre fautif quand il y en a un.
+
+    - **Pagination** : par curseur opaque (`limit` ≤ 100, défaut 25). Réponse
+      `{ data, has_more, next_cursor }`. `cursor` absent ou égal au mot `null`
+      = première page. Un `limit` hors bornes est refusé (400), pas corrigé.
+
+    - **Paramètres de requête inconnus** : ignorés (jamais 400), pour qu'un
+      connecteur écrit pour une version future reste compatible.
+
+    - **Quota** : en-têtes `X-RateLimit-Limit`, `X-RateLimit-Remaining` et
+      `X-RateLimit-Reset` (secondes restantes, pas un horodatage) sur TOUTES les
+      réponses, 401 et 403 compris ; `429` + `Retry-After` au-delà.
+
+    - **Dates** : ISO 8601, UTC, suffixe `Z`.
+
+    - **Cache** : `Cache-Control: no-store` sur toute réponse (données
+      personnelles).
+
+
+    ## Disponibilité dans l'API réelle (état au 2026-09-15)
+
+    Servi aujourd'hui : `GET /automations` et `GET /automations/{id}` pour la
+    famille sociale Meta (`social_*`, `lead_ads` ; providers `facebook`,
+    `instagram`, `instagram_page`).
+
+    À venir, dans cet ordre : `PATCH /automations/{id}`, la famille
+    `crm_source`, `GET /leads`, `GET /runs` et `GET /automations/{id}/runs`,
+    les webhooks. Une route du contrat pas encore servie répond
+    `404 route_not_found` — jamais 405 : un connecteur ne doit pas y lire une
+    faute de sa part. La bascule du mock vers l'API réelle (URL, workspace de
+    test, clés) est annoncée par le référent au jalon 80 %.
+
+    Clés : une seule famille en v1, `agk_live_…`. Pas de clé `agk_test_` dans
+    cette version du contrat.
+
+
+    ## Changements draft.1 → draft.2 (2026-09-15, annoncés aux deux devs)
+
+    Aucune route, aucun champ ni aucune valeur d'énumération ne change. Le
+    draft.2 PRÉCISE ce que le draft.1 laissait implicite, d'après
+    l'implémentation réelle : format des identifiants (préfixés, opaques —
+    la mention « UUID » du texte 4-CONTRAT-API est retirée) ; liste fermée
+    des codes d'erreur ; réponse 400 sur les paramètres invalides ; en-têtes de
+    quota sur toutes les réponses ; sémantique de `cursor=null` et des
+    paramètres inconnus ; sens de `403` (accès du workspace au service, pas
+    un droit par clé) ; sémantique des statuts ; périmètre Meta de la famille
+    `social_*` ; format de livraison des webhooks (`callbacks`) et signature ;
+    section « Disponibilité » ; en-têtes (`Cache-Control`, `X-RateLimit-*`)
+    déclarés sur chaque réponse ; `data` et `secret` requis ; codes
+    `automation_not_controllable` (422) et `webhook_not_found` (404) ; 403 et
+    429 déclarés sur toute opération ; champs requis de `Run`, `Lead`,
+    `Webhook` ; livraison webhook typée par événement (`discriminator`) et
+    sans authentification Bearer héritée.
+servers:
+  - url: https://api.agentova.ai/v1
+    description: "Production (base URL à confirmer — [À CLARIFIER] ; l'URL réelle est communiquée avec le workspace de test au jalon 80 %)"
+
+security:
+  - bearerAuth: []
+
+paths:
+  /automations:
+    get:
+      operationId: listAutomations
+      summary: Lister les automatisations du workspace
+      description: >
+        Sert aussi de test de connexion (`limit=1`) et de search. Tri :
+        création décroissante. Les filtres se cumulent (ET).
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/AutomationStatus'
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/AutomationType'
+        - name: agent_id
+          in: query
+          description: >
+            Identifiant opaque d'agent (`agt_…`) tel que renvoyé par l'API.
+            Une valeur qui n'a pas la forme d'un identifiant émis par l'API
+            donne une page vide, pas une erreur.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Liste paginée d'automatisations
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Automation'
+              example:
+                data:
+                  - id: "aut_01HZX3Q8K5N7P2R4S6T8V0W2Y4"
+                    name: "Réponse aux commentaires — Agent SAV"
+                    type: "social_comments"
+                    provider: "instagram_page"
+                    agent_id: "agt_01HZX3Q8K5N7P2R4S6T8V0W2Y5"
+                    agent_name: "Agent SAV"
+                    status: "active"
+                    updated_at: "2026-08-20T09:15:00Z"
+                has_more: false
+                next_cursor: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /automations/{id}:
+    get:
+      operationId: getAutomation
+      summary: Détail d'une automatisation
+      parameters:
+        - $ref: '#/components/parameters/AutomationId'
+      responses:
+        '200':
+          description: Automatisation trouvée
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Automation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    patch:
+      operationId: updateAutomationStatus
+      summary: Changer le statut (activer / mettre en pause)
+      description: >
+        Idempotent : re-pauser une automatisation déjà en pause renvoie 200.
+        Le corps n'accepte que `active` et `paused` (toute autre valeur → 400
+        `invalid_request`). 422 `automation_not_controllable` si
+        l'automatisation est actuellement `draft` ou `error` : elle n'est pas
+        pilotable par l'API tant qu'elle n'a pas été mise en état depuis
+        l'application. Pas encore servi par l'API réelle (voir
+        « Disponibilité ») : `404 route_not_found` en attendant.
+      parameters:
+        - $ref: '#/components/parameters/AutomationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [active, paused]
+            example:
+              status: paused
+      responses:
+        '200':
+          description: Statut mis à jour (ou déjà dans cet état)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Automation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: L'automatisation est en `draft` ou `error` — non pilotable par l'API
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: "automation_not_controllable"
+                  message: "Cette automatisation est en brouillon ou en erreur : activez-la d'abord depuis l'application"
+                  details:
+                    status: "draft"
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /automations/{id}/runs:
+    get:
+      operationId: listAutomationRuns
+      summary: Historique d'exécutions d'une automatisation
+      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      parameters:
+        - $ref: '#/components/parameters/AutomationId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Liste paginée de runs
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Run'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /runs:
+    get:
+      operationId: listRuns
+      summary: Historique global des exécutions (perform list du trigger "nouvelle exécution")
+      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      parameters:
+        - name: automation_id
+          in: query
+          description: Identifiant opaque `aut_…`.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Liste paginée de runs
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Run'
+              example:
+                data:
+                  - id: "run_01HZX4A1B2C3D4E5F6G7H8J9K0"
+                    automation_id: "aut_01HZX3Q8K5N7P2R4S6T8V0W2Y4"
+                    status: "success"
+                    trigger_type: "comment"
+                    occurred_at: "2026-08-20T10:00:00Z"
+                    actions:
+                      - type: "reply_comment"
+                        status: "success"
+                    lead_id: null
+                has_more: false
+                next_cursor: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RouteNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /leads:
+    get:
+      operationId: listLeads
+      summary: Leads du workspace (perform list du trigger "nouveau lead")
+      description: >
+        Pas encore servi par l'API réelle (voir « Disponibilité »). Le
+        périmètre des sources exposées en v1 (les 5 valeurs de `LeadSource`
+        ou un sous-ensemble) est confirmé avant la livraison de cette route ;
+        toute réduction est annoncée.
+      parameters:
+        - name: source
+          in: query
+          schema:
+            $ref: '#/components/schemas/LeadSource'
+        - name: agent_id
+          in: query
+          description: Identifiant opaque d'agent (`agt_…`).
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Liste paginée de leads
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Lead'
+              example:
+                data:
+                  - id: "lea_01HZX5M2N3P4Q5R6S7T8V9W0X1"
+                    source: "lead_ads"
+                    agent_id: "agt_01HZX3Q8K5N7P2R4S6T8V0W2Y5"
+                    name: "Jane Doe"
+                    email: "jane.doe@example.com"
+                    phone: "+33612345678"
+                    custom_fields:
+                      budget: "5000-10000"
+                    created_at: "2026-08-20T09:20:00Z"
+                has_more: false
+                next_cursor: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RouteNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /webhooks:
+    get:
+      operationId: listWebhooks
+      summary: Lister les abonnements webhook
+      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      responses:
+        '200':
+          description: Liste des abonnements
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Webhook'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RouteNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      operationId: createWebhook
+      summary: S'abonner à des événements
+      description: >
+        Pas encore servi par l'API réelle (voir « Disponibilité »).
+
+
+        **Livraison** (décrite dans `callbacks` ci-dessous) : `POST` sur l'URL
+        abonnée, corps `WebhookDelivery`, en-tête
+        `X-Agentova-Signature: t=<horodatage unix>,v1=<hmac-sha256>` où la
+        signature est le HMAC-SHA256, avec le `secret` de l'abonnement, de la
+        chaîne `{t}.{corps brut}`. Le récepteur rejette une livraison dont `t`
+        s'écarte de plus de 5 minutes (anti-rejeu) et déduplique par `id`
+        (`evt_…`) : une livraison peut être rejouée. Réponse attendue : un
+        `2xx` en moins de 10 secondes, corps ignoré. Rejeu avec attente
+        croissante bornée ; après des échecs prolongés, l'abonnement est
+        désactivé (`disabled_at`) et les administrateurs du workspace sont
+        prévenus. Plafond d'abonnements par workspace.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: HTTPS obligatoire ; aucune adresse privée ou locale ; aucun identifiant dans l'URL.
+                events:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/WebhookEvent'
+            example:
+              url: "https://hooks.zapier.com/hooks/standard/xxxxx/"
+              events: ["lead.created"]
+      callbacks:
+        delivery:
+          '{$request.body#/url}':
+            post:
+              summary: Livraison d'un événement à l'URL abonnée
+              # Aucune authentification Bearer vers l'URL du client : seule la
+              # signature HMAC (en-tête X-Agentova-Signature) authentifie l'envoi.
+              security: []
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      $ref: '#/components/schemas/WebhookDelivery'
+              parameters:
+                - name: X-Agentova-Signature
+                  in: header
+                  required: true
+                  schema:
+                    type: string
+                  example: "t=1724145600,v1=5f8a3c1e9b2d4f6a8c0e2b4d6f8a0c2e5f8a3c1e9b2d4f6a8c0e2b4d6f8a0c2e"
+              responses:
+                '2XX':
+                  description: Livraison acquittée (corps ignoré)
+                '4XX':
+                  description: Livraison refusée — rejouée avec attente croissante, puis abonnement désactivé après échecs prolongés
+      responses:
+        '201':
+          description: Abonnement créé — le secret n'est retourné qu'une seule fois
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Webhook'
+                  - type: object
+                    required: [secret]
+                    properties:
+                      secret:
+                        type: string
+                        description: Affiché une seule fois, sert à vérifier les signatures
+              example:
+                id: "whk_01HZX6X7Y8Z9A0B1C2D3E4F5G6"
+                url: "https://hooks.zapier.com/hooks/standard/xxxxx/"
+                events: ["lead.created"]
+                created_at: "2026-08-20T09:25:00Z"
+                disabled_at: null
+                secret: "whsec_5f8a3c1e9b2d4f6a8c0e2b4d6f8a0c2e"
+        '400':
+          description: Payload invalide (ex. URL non HTTPS, adresse privée)
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/RouteNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /webhooks/{id}:
+    delete:
+      operationId: deleteWebhook
+      summary: Se désabonner
+      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identifiant opaque `whk_…`.
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Abonnement supprimé
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: >
+            Abonnement absent de ce workspace, déjà supprimé ou inexistant
+            (`webhook_not_found` — la suppression n'est pas idempotente : 204
+            une seule fois) ; ou route pas encore servie (`route_not_found`).
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/Cache-Control'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: "webhook_not_found"
+                  message: "Abonnement introuvable dans ce workspace"
+                  details: {}
+
+        '429':
+          $ref: '#/components/responses/RateLimited'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "agk_live_<32 caractères>"
+      description: >
+        Une clé = un workspace ; la clé détermine le workspace, aucun
+        workspace_id ne circule jamais dans les requêtes. Le schéma `Bearer`
+        est insensible à la casse. Une clé révoquée est refusée immédiatement.
+
+  headers:
+    Cache-Control:
+      description: Toujours `no-store` (données personnelles, aucun cache intermédiaire)
+      schema:
+        type: string
+        enum: [no-store]
+    X-RateLimit-Limit:
+      description: Nombre de requêtes autorisées par fenêtre (par clé)
+      schema:
+        type: integer
+    X-RateLimit-Remaining:
+      description: Requêtes restantes dans la fenêtre courante
+      schema:
+        type: integer
+    X-RateLimit-Reset:
+      description: Secondes restantes avant la remise à zéro de la fenêtre (PAS un horodatage)
+      schema:
+        type: integer
+
+  parameters:
+    AutomationId:
+      name: id
+      in: path
+      required: true
+      description: Identifiant opaque `aut_…` tel que renvoyé par l'API.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      description: Entier entre 1 et 100. Hors bornes ou non entier → 400 `invalid_request`.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    Cursor:
+      name: cursor
+      in: query
+      description: >
+        Curseur opaque reçu dans `next_cursor`. Absent, vide ou égal au mot
+        `null` = première page. Illisible → 400 `invalid_request`.
+      schema:
+        type: string
+        nullable: true
+
+  responses:
+    BadRequest:
+      description: Paramètre de requête ou corps invalide (`details.parameter` nomme le fautif)
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: "invalid_request"
+              message: "Le paramètre limit doit être un entier entre 1 et 100"
+              details:
+                parameter: "limit"
+                max: 100
+    Unauthorized:
+      description: Clé absente, mal formée, invalide ou révoquée (indistinguables, exprès)
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: "invalid_api_key"
+              message: "Clé invalide ou révoquée — créez-en une dans Paramètres → API"
+              details: {}
+    Forbidden:
+      description: >
+        Clé valide, mais le workspace n'a pas (ou plus) accès au service —
+        abonnement bloqué ou absent. Ce n'est pas un droit par clé : il n'y a
+        pas de permissions par clé en v1.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: "workspace_access_denied"
+              message: "L'abonnement de cet espace de travail ne permet pas l'accès à l'API"
+              details: {}
+    NotFound:
+      description: >
+        Ressource absente de ce workspace (même réponse qu'elle existe
+        ailleurs ou nulle part), OU route inconnue / pas encore servie
+        (`route_not_found`).
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: "automation_not_found"
+              message: "Automatisation introuvable dans ce workspace"
+              details: {}
+    RouteNotFound:
+      description: Route inconnue sous `/v1`, ou route du contrat pas encore servie par l'API réelle (voir « Disponibilité »)
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: "route_not_found"
+              message: "Route inconnue, ou pas encore disponible dans cette version de l'API"
+              details: {}
+    RateLimited:
+      description: Quota dépassé (par clé, ou trop d'échecs d'authentification depuis une adresse)
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/Cache-Control'
+        Retry-After:
+          description: Secondes avant de réessayer
+          schema:
+            type: integer
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: "rate_limited"
+              message: "Quota de requêtes dépassé — réessayez dans quelques secondes"
+              details:
+                retry_after_seconds: 42
+
+  schemas:
+    ErrorCode:
+      type: string
+      description: >
+        Codes stables d'erreur. `invalid_request` (400 ; aussi 413 corps trop
+        volumineux et 415 type de contenu non supporté, statut HTTP conservé,
+        raison dans `details.reason`) · `invalid_api_key` (401) ·
+        `workspace_access_denied` (403) · `automation_not_found` (404) ·
+        `webhook_not_found` (404) · `route_not_found` (404 : chemin inconnu ou
+        route pas encore servie) · `automation_not_controllable` (422 :
+        automatisation en `draft` ou `error`) · `rate_limited` (429) ·
+        `internal_error` (500, message générique).
+      enum:
+        - invalid_request
+        - invalid_api_key
+        - workspace_access_denied
+        - automation_not_found
+        - webhook_not_found
+        - route_not_found
+        - automation_not_controllable
+        - rate_limited
+        - internal_error
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              $ref: '#/components/schemas/ErrorCode'
+            message:
+              type: string
+              description: En français, destiné à être affiché ; peut changer sans préavis (brancher sur `code`).
+            details:
+              type: object
+              description: Vide (`{}`) ou contexte (`parameter`, `max`, `reason`, `retry_after_seconds`…).
+
+    PaginatedResponse:
+      type: object
+      required: [has_more, next_cursor]
+      properties:
+        has_more:
+          type: boolean
+        next_cursor:
+          type: string
+          nullable: true
+          description: Curseur opaque de la page suivante ; `null` s'il n'y a pas de suite.
+
+    AutomationStatus:
+      type: string
+      description: >
+        `active` : tourne. `paused` : mise en pause depuis l'application (ou
+        par `PATCH`). `draft` : jamais activée. `error` : arrêtée sur une
+        erreur (compte déconnecté, jeton révoqué…). Une automatisation dont le
+        compte a été désabonné n'apparaît pas dans l'API.
+      enum: [active, paused, draft, error]
+
+    AutomationType:
+      type: string
+      description: >
+        `social_comments`, `social_story`, `social_messages` et `lead_ads`
+        désignent les réseaux Meta (Facebook, Instagram). Les canaux
+        WhatsApp et e-mail ne sont pas exposés dans cette version ; ils
+        auront leur propre type, annoncé le moment venu. `crm_source` =
+        automatisation déclenchée par un CRM (pas encore servie).
+      enum: [social_comments, social_story, social_messages, lead_ads, crm_source]
+
+    LeadSource:
+      type: string
+      enum: [widget, social, telephony, lead_ads, crm]
+
+    WebhookEvent:
+      type: string
+      enum: [run.completed, lead.created, automation.status_changed]
+
+    Automation:
+      type: object
+      required: [id, name, type, provider, agent_id, agent_name, status, updated_at]
+      properties:
+        id:
+          type: string
+          description: Identifiant opaque préfixé `aut_`. Stable pour une automatisation donnée.
+        name:
+          type: string
+          description: >
+            Libellé tel que l'application l'affiche. Pour une automatisation
+            sociale il est composé (« Réponse aux commentaires — Agent SAV »).
+        type:
+          $ref: '#/components/schemas/AutomationType'
+        provider:
+          type: string
+          description: >
+            Valeur brute du connecteur. Servis aujourd'hui : `facebook`,
+            `instagram`, `instagram_page`. D'autres valeurs (ex. `hubspot`)
+            arriveront avec `crm_source`. À traiter comme une chaîne libre.
+        agent_id:
+          type: string
+          description: Identifiant opaque d'agent, préfixé `agt_`.
+        agent_name:
+          type: string
+        status:
+          $ref: '#/components/schemas/AutomationStatus'
+        updated_at:
+          type: string
+          format: date-time
+
+    Run:
+      type: object
+      required: [id, automation_id, status, trigger_type, occurred_at, actions, lead_id]
+      properties:
+        id:
+          type: string
+          description: Identifiant opaque préfixé `run_`.
+        automation_id:
+          type: string
+          description: Identifiant opaque préfixé `aut_`.
+        status:
+          type: string
+          enum: [success, partial, failed]
+        trigger_type:
+          type: string
+          enum: [comment, story_reply, message, lead_ads, crm_event]
+        occurred_at:
+          type: string
+          format: date-time
+        actions:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              status:
+                type: string
+        lead_id:
+          type: string
+          nullable: true
+          description: Identifiant opaque préfixé `lea_`, ou `null`.
+
+    Lead:
+      type: object
+      required: [id, source, agent_id, name, email, phone, custom_fields, created_at]
+      properties:
+        id:
+          type: string
+          description: Identifiant opaque préfixé `lea_`.
+        source:
+          $ref: '#/components/schemas/LeadSource'
+        agent_id:
+          type: string
+          description: Identifiant opaque préfixé `agt_`.
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        custom_fields:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    Webhook:
+      type: object
+      required: [id, url, events, created_at, disabled_at]
+      properties:
+        id:
+          type: string
+          description: Identifiant opaque préfixé `whk_`.
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEvent'
+        created_at:
+          type: string
+          format: date-time
+        disabled_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Posé quand l'abonnement a été désactivé après des échecs prolongés.
+
+    WebhookDeliveryBase:
+      type: object
+      required: [id, created_at]
+      properties:
+        id:
+          type: string
+          description: Identifiant opaque préfixé `evt_`, unique par événement — clé de déduplication du récepteur.
+        created_at:
+          type: string
+          format: date-time
+
+    LeadCreatedDelivery:
+      allOf:
+        - $ref: '#/components/schemas/WebhookDeliveryBase'
+        - type: object
+          required: [type, data]
+          properties:
+            type:
+              type: string
+              enum: [lead.created]
+            data:
+              $ref: '#/components/schemas/Lead'
+
+    RunCompletedDelivery:
+      allOf:
+        - $ref: '#/components/schemas/WebhookDeliveryBase'
+        - type: object
+          required: [type, data]
+          properties:
+            type:
+              type: string
+              enum: [run.completed]
+            data:
+              $ref: '#/components/schemas/Run'
+
+    AutomationStatusChangedDelivery:
+      allOf:
+        - $ref: '#/components/schemas/WebhookDeliveryBase'
+        - type: object
+          required: [type, data]
+          properties:
+            type:
+              type: string
+              enum: [automation.status_changed]
+            data:
+              $ref: '#/components/schemas/Automation'
+
+    WebhookDelivery:
+      description: >
+        Corps envoyé à l'URL abonnée. `type` (valeur de `WebhookEvent`)
+        détermine la forme de `data` : un `Lead` pour `lead.created`, un `Run`
+        pour `run.completed`, une `Automation` pour `automation.status_changed`.
+      oneOf:
+        - $ref: '#/components/schemas/LeadCreatedDelivery'
+        - $ref: '#/components/schemas/RunCompletedDelivery'
+        - $ref: '#/components/schemas/AutomationStatusChangedDelivery'
+      discriminator:
+        propertyName: type
+        mapping:
+          lead.created: '#/components/schemas/LeadCreatedDelivery'
+          run.completed: '#/components/schemas/RunCompletedDelivery'
+          automation.status_changed: '#/components/schemas/AutomationStatusChangedDelivery'
+      example:
+        id: "evt_01HZX7B2C3D4E5F6G7H8J9K0L1"
+        type: "lead.created"
+        created_at: "2026-08-20T09:20:01Z"
+        data:
+          id: "lea_01HZX5M2N3P4Q5R6S7T8V9W0X1"
+          source: "lead_ads"
+          agent_id: "agt_01HZX3Q8K5N7P2R4S6T8V0W2Y5"
+          name: "Jane Doe"
+          email: "jane.doe@example.com"
+          phone: "+33612345678"
+          custom_fields: {}
+          created_at: "2026-08-20T09:20:00Z"
