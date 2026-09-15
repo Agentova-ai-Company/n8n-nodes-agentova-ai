@@ -25,7 +25,7 @@ export const automationActivateDescription: INodeProperties[] = [
 				displayName: 'ID',
 				name: 'id',
 				type: 'string',
-				placeholder: 'e.g. 3fa85f64-5717-4562-b3fc-2c963f66afa6',
+				placeholder: 'e.g. aut_c29jaWFsOjNmYTg1ZjY0…',
 			},
 		],
 	},

@@ -25,6 +25,13 @@ export class AgentovaApi implements ICredentialType {
 			required: true,
 			default: '',
 		},
+		{
+			displayName: 'Base URL',
+			name: 'baseUrl',
+			type: 'string',
+			default: 'https://api.agentova.ai/v1',
+			description: 'Leave the default unless Agentova gives you another URL (test workspace, local mock)',
+		},
 	];
 
 	authenticate: IAuthenticateGeneric = {
@@ -38,7 +45,7 @@ export class AgentovaApi implements ICredentialType {
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: 'https://api.agentova.ai/v1',
+			baseURL: '={{$credentials.baseUrl}}',
 			url: '/automations',
 			qs: { limit: 1 },
 		},

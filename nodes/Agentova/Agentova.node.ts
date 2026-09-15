@@ -19,7 +19,7 @@ export class Agentova implements INodeType {
 		outputs: [NodeConnectionTypes.Main],
 		credentials: [{ name: 'agentovaApi', required: true }],
 		requestDefaults: {
-			baseURL: 'https://api.agentova.ai/v1',
+			baseURL: '={{$credentials.baseUrl}}',
 			headers: {
 				Accept: 'application/json',
 				'Content-Type': 'application/json',

@@ -24,6 +24,8 @@ Official n8n community node for the **Agentova public API v1** (`@n8n/node-cli`,
       verification UX guidelines, backed by `GET /automations`
 - [x] Vitest suite (`npm test`): the list-search helper, and a regression guard checking the
       node's `status`/`type` enums against the API contract
+- [x] Credential exposes a **Base URL** field (default: production) — swap it for a mock or the
+      test workspace without touching code
 - Webhook trigger (`run.completed`, `lead.created`, `automation.status_changed`): **out of
   scope for B2**, part of B3
 
@@ -37,11 +39,12 @@ npm run build
 npm run dev   # runs a local n8n instance with this node loaded
 ```
 
-`requestDefaults.baseURL` and the credential's `test.request.baseURL` point to
-`https://api.agentova.ai/v1` (production) — no mock override wired yet, since the real API
-isn't live in production yet either. Wiring a mock URL (`annexes/openapi-v1-draft.yaml` via
-`@stoplight/prism-cli`) for local development happens once that file is shared (the Zapier
-connector and doc portal live in their own separate repositories).
+The credential's **Base URL** field defaults to `https://api.agentova.ai/v1` (production). Leave
+it as-is unless Agentova gives you another URL — a local mock, or the test workspace promised at
+the 80% milestone. For local development against a mock, set the credential's Base URL to the
+mock server's address (e.g. `@stoplight/prism-cli` on `http://127.0.0.1:4010`, or a local server
+of your own — the OpenAPI contract file itself hasn't been shared yet, so there's nothing to
+commit to this repo).
 
 ## Publishing
 
