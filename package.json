@@ -26,7 +26,10 @@
     "n8nNodesApiVersion": 1,
     "strict": true,
     "credentials": ["dist/credentials/AgentovaApi.credentials.js"],
-    "nodes": ["dist/nodes/Agentova/Agentova.node.js"]
+    "nodes": [
+      "dist/nodes/Agentova/Agentova.node.js",
+      "dist/nodes/Agentova/AgentovaTrigger.node.js"
+    ]
   },
   "devDependencies": {
     "@n8n/node-cli": "^0.47.2",
