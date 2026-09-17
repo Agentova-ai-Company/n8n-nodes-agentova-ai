@@ -73,8 +73,8 @@ info:
     `Webhook` ; livraison webhook typée par événement (`discriminator`) et
     sans authentification Bearer héritée.
 servers:
-  - url: https://api.agentova.ai/v1
-    description: "Production (base URL à confirmer — [À CLARIFIER] ; l'URL réelle est communiquée avec le workspace de test au jalon 80 %)"
+  - url: https://core-api.agentova.ai/v1
+    description: "Production — servie directement par le service core-api, sans sous-domaine dédié pour l'instant"
 
 security:
   - bearerAuth: []
