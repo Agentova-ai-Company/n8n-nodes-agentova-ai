@@ -29,7 +29,7 @@ export class AgentovaApi implements ICredentialType {
 			displayName: 'Base URL',
 			name: 'baseUrl',
 			type: 'string',
-			default: 'https://api.agentova.ai/v1',
+			default: 'https://core-api.agentova.ai/v1',
 			description: 'Leave the default unless Agentova gives you another URL (test workspace, local mock)',
 		},
 	];

@@ -6,7 +6,7 @@ Official n8n community node for the **Agentova public API v1** (`@n8n/node-cli`,
 
 ### B1 — npm publishing pipeline
 
-- [x] Project scaffolded (`declarative/custom` template — Bearer token auth, base URL `https://api.agentova.ai/v1`)
+- [x] Project scaffolded (`declarative/custom` template — Bearer token auth, base URL `https://core-api.agentova.ai/v1`)
 - [x] `package.json` conforms to n8n's community node requirements: name `n8n-nodes-agentova-ai`,
       MIT license, `n8n-community-node-package` keyword, `publishConfig.access=public` +
       `publishConfig.tag=alpha` (for the `0.0.1-alpha` prerelease)
@@ -52,7 +52,7 @@ npm run build
 npm run dev   # runs a local n8n instance with this node loaded
 ```
 
-The credential's **Base URL** field defaults to `https://api.agentova.ai/v1` (production). Leave
+The credential's **Base URL** field defaults to `https://core-api.agentova.ai/v1` (production). Leave
 it as-is unless Agentova gives you another URL — a local mock, or the test workspace promised at
 the 80% milestone.
 
