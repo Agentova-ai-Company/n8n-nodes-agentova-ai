@@ -1,6 +1,6 @@
 import { NodeConnectionTypes, type INodeType, type INodeTypeDescription } from 'n8n-workflow';
-import { userDescription } from './resources/user';
-import { companyDescription } from './resources/company';
+import { automationDescription } from './resources/automation';
+import { searchAutomations } from './methods/listSearch';
 
 export class Agentova implements INodeType {
 	description: INodeTypeDescription = {
@@ -19,7 +19,7 @@ export class Agentova implements INodeType {
 		outputs: [NodeConnectionTypes.Main],
 		credentials: [{ name: 'agentovaApi', required: true }],
 		requestDefaults: {
-			baseURL: 'https://api.agentova.ai/v1',
+			baseURL: '={{$credentials.baseUrl}}',
 			headers: {
 				Accept: 'application/json',
 				'Content-Type': 'application/json',
@@ -33,18 +33,19 @@ export class Agentova implements INodeType {
 				noDataExpression: true,
 				options: [
 					{
-						name: 'User',
-						value: 'user',
-					},
-					{
-						name: 'Company',
-						value: 'company',
+						name: 'Automation',
+						value: 'automation',
 					},
 				],
-				default: 'user',
+				default: 'automation',
 			},
-			...userDescription,
-			...companyDescription,
+			...automationDescription,
 		],
+	};
+
+	methods = {
+		listSearch: {
+			searchAutomations,
+		},
 	};
 }

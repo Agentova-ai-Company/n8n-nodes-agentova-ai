@@ -17,6 +17,7 @@
     "dev": "n8n-node dev",
     "lint": "n8n-node lint",
     "lint:fix": "n8n-node lint --fix",
+    "test": "vitest run",
     "release": "n8n-node release",
     "prepublishOnly": "n8n-node prerelease"
   },
@@ -25,14 +26,18 @@
     "n8nNodesApiVersion": 1,
     "strict": true,
     "credentials": ["dist/credentials/AgentovaApi.credentials.js"],
-    "nodes": ["dist/nodes/Agentova/Agentova.node.js"]
+    "nodes": [
+      "dist/nodes/Agentova/Agentova.node.js",
+      "dist/nodes/Agentova/AgentovaTrigger.node.js"
+    ]
   },
   "devDependencies": {
     "@n8n/node-cli": "^0.47.2",
     "eslint": "9.39.5",
     "prettier": "3.9.6",
     "release-it": "^21.0.2",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "^5.0.0"
   },
   "peerDependencies": { "n8n-workflow": "*" }
 }
