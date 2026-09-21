@@ -1,13 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IHookFunctions, IWebhookFunctions } from 'n8n-workflow';
 import { createHmac } from 'crypto';
-import { AgentovaTrigger } from './AgentovaTrigger.node';
+import { AgentovaTrigger, _resetProcessDeduplication } from './AgentovaTrigger.node';
 
 function fakeWebhookContext(options: {
 	webhookSecret?: string;
 	signatureHeader?: string;
 	rawBody?: Buffer;
 	bodyData?: Record<string, unknown>;
+	workflowId?: string;
 }) {
 	const staticData: Record<string, unknown> = {};
 	if (options.webhookSecret) staticData.webhookSecret = options.webhookSecret;
@@ -18,6 +19,7 @@ function fakeWebhookContext(options: {
 
 	const context = {
 		getWorkflowStaticData: () => staticData,
+		getWorkflow: () => ({ id: options.workflowId ?? 'wf_1' }),
 		getHeaderData: () => (options.signatureHeader ? { 'x-agentova-signature': options.signatureHeader } : {}),
 		getRequestObject: () => ({ rawBody: options.rawBody }),
 		getResponseObject: () => ({ status: statusMock, send: sendMock, end: endMock }),
@@ -25,6 +27,17 @@ function fakeWebhookContext(options: {
 	} as unknown as IWebhookFunctions;
 
 	return { context, statusMock, sendMock, endMock };
+}
+
+// Forme RÉELLE d'une erreur HTTP dans n8n (mesurée) : une AxiosError qui porte
+// `status` et `response`, sans `statusCode` ni `httpCode`.
+function apiError(status: number, code?: string) {
+	return {
+		isAxiosError: true,
+		status,
+		message: `Request failed with status code ${status}`,
+		response: { status, data: code ? { error: { code, message: 'x', details: {} } } : '<html>Not Found</html>' },
+	};
 }
 
 function signedHeader(timestamp: number, rawBody: Buffer, secret: string): string {
@@ -52,6 +65,7 @@ function fakeContext(options: {
 		getNodeParameter: () => options.events ?? [],
 		getCredentials: vi.fn().mockResolvedValue({ baseUrl: 'https://api.agentova.ai/v1' }),
 		getNode: () => ({ name: 'Agentova Trigger' }),
+		logger: { warn: vi.fn() },
 		helpers: { httpRequestWithAuthentication },
 	} as unknown as IHookFunctions;
 
@@ -99,10 +113,26 @@ describe('AgentovaTrigger webhookMethods', () => {
 		it('tolerates route_not_found (route not yet served by the real API) and keeps the existing subscription', async () => {
 			const { context, staticData } = fakeContext({
 				webhookId: 'wh_123',
-				httpImpl: () => Promise.reject({ statusCode: 404 }),
+				httpImpl: () => Promise.reject(apiError(404, 'route_not_found')),
 			});
 			expect(await webhookMethods.default.checkExists.call(context)).toBe(true);
 			expect(staticData.webhookId).toBe('wh_123');
+		});
+
+		it('reports any OTHER 404 (wrong base URL, proxy…) instead of pretending the subscription exists', async () => {
+			const { context } = fakeContext({
+				webhookId: 'wh_123',
+				httpImpl: () => Promise.reject(apiError(404)),
+			});
+			await expect(webhookMethods.default.checkExists.call(context)).rejects.toThrow();
+		});
+
+		it('still reads the legacy error shape (statusCode + error body)', async () => {
+			const { context } = fakeContext({
+				webhookId: 'wh_123',
+				httpImpl: () => Promise.reject({ statusCode: 404, error: { error: { code: 'route_not_found' } } }),
+			});
+			expect(await webhookMethods.default.checkExists.call(context)).toBe(true);
 		});
 	});
 
@@ -162,24 +192,80 @@ describe('AgentovaTrigger webhookMethods', () => {
 			expect(httpRequestWithAuthentication).not.toHaveBeenCalled();
 		});
 
-		it('treats a 404 (already deleted) as success, not an error (contrat §4)', async () => {
+		it('treats webhook_not_found (already deleted) as success and forgets the subscription (contrat §4)', async () => {
 			const { context, staticData } = fakeContext({
 				webhookId: 'wh_123',
-				httpImpl: () => Promise.reject({ statusCode: 404 }),
+				webhookSecret: 'whsec_x',
+				httpImpl: () => Promise.reject(apiError(404, 'webhook_not_found')),
 			});
 
 			expect(await webhookMethods.default.delete.call(context)).toBe(true);
 			expect(staticData.webhookId).toBeUndefined();
+			expect(staticData.webhookSecret).toBeUndefined();
+		});
+
+		it('does not block deactivation on route_not_found, but KEEPS the subscription id', async () => {
+			const { context, staticData } = fakeContext({
+				webhookId: 'wh_123',
+				httpImpl: () => Promise.reject(apiError(404, 'route_not_found')),
+			});
+
+			expect(await webhookMethods.default.delete.call(context)).toBe(true);
+			expect(staticData.webhookId).toBe('wh_123');
+		});
+
+		it('reports an unrelated 404 and keeps the subscription id', async () => {
+			const { context, staticData } = fakeContext({
+				webhookId: 'wh_123',
+				httpImpl: () => Promise.reject(apiError(404)),
+			});
+
+			await expect(webhookMethods.default.delete.call(context)).rejects.toThrow();
+			expect(staticData.webhookId).toBe('wh_123');
 		});
 
 		it('wraps any other error in NodeApiError instead of throwing it raw', async () => {
 			const { context } = fakeContext({
 				webhookId: 'wh_123',
-				httpImpl: () => Promise.reject({ statusCode: 500, message: 'boom' }),
+				httpImpl: () => Promise.reject(apiError(500, 'internal_error')),
 			});
 
 			await expect(webhookMethods.default.delete.call(context)).rejects.toThrow();
 		});
+	});
+});
+
+describe('AgentovaTrigger create — id-only response', () => {
+	const { webhookMethods } = new AgentovaTrigger();
+
+	it('deletes the orphan subscription before failing, and stores nothing', async () => {
+		const calls: Array<{ method: string; url: string }> = [];
+		const { context, staticData } = fakeContext({
+			events: ['lead.created'],
+			httpImpl: (...args: unknown[]) => {
+				const request = args[1] as { method: string; url: string };
+				calls.push({ method: request.method, url: request.url });
+				return Promise.resolve(request.method === 'POST' ? { id: 'wh_orphan' } : {});
+			},
+		});
+
+		await expect(webhookMethods.default.create.call(context)).rejects.toThrow();
+		expect(calls).toEqual([
+			{ method: 'POST', url: '/webhooks' },
+			{ method: 'DELETE', url: '/webhooks/wh_orphan' },
+		]);
+		expect(staticData.webhookId).toBeUndefined();
+	});
+
+	it('still reports the creation failure when the cleanup itself fails', async () => {
+		const { context } = fakeContext({
+			httpImpl: (...args: unknown[]) =>
+				(args[1] as { method: string }).method === 'POST'
+					? Promise.resolve({ id: 'wh_orphan' })
+					: Promise.reject(apiError(500)),
+		});
+
+		await expect(webhookMethods.default.create.call(context)).rejects.toThrow(/id and secret/);
 	});
 });
 
@@ -189,6 +275,10 @@ describe('AgentovaTrigger webhook (event delivery)', () => {
 	const payload = { id: 'evt_01HZX7B2C3D4E5F6G7H8J9K0L1', type: 'lead.created', created_at: '2026-08-20T09:20:01Z' };
 	const rawBody = Buffer.from(JSON.stringify(payload));
 
+	beforeEach(() => {
+		_resetProcessDeduplication();
+	});
+
 	it('accepts a correctly signed delivery and starts the workflow', async () => {
 		const header = signedHeader(Math.floor(Date.now() / 1000), rawBody, secret);
 		const { context } = fakeWebhookContext({ webhookSecret: secret, signatureHeader: header, rawBody, bodyData: payload });
@@ -196,6 +286,87 @@ describe('AgentovaTrigger webhook (event delivery)', () => {
 		const result = await webhook.call(context);
 
 		expect(result).toEqual({ workflowData: [[{ json: payload }]] });
+	});
+
+	it('acknowledges a replayed delivery (same evt id, fresh signature) WITHOUT starting the workflow again (contrat §5)', async () => {
+		const first = fakeWebhookContext({
+			webhookSecret: secret,
+			signatureHeader: signedHeader(Math.floor(Date.now() / 1000), rawBody, secret),
+			rawBody,
+			bodyData: payload,
+		});
+		expect(await webhook.call(first.context)).toEqual({ workflowData: [[{ json: payload }]] });
+
+		// Nouvelle tentative re-signée. Données statiques VIDES, comme dans n8n réel
+		// (elles ne sont pas enregistrées pendant webhook()) : seule la mémoire de
+		// processus peut reconnaître l'événement.
+		const replay = fakeWebhookContext({
+			webhookSecret: secret,
+			signatureHeader: signedHeader(Math.floor(Date.now() / 1000) + 1, rawBody, secret),
+			rawBody,
+			bodyData: payload,
+		});
+
+		expect(await webhook.call(replay.context)).toEqual({ noWebhookResponse: true });
+		expect(replay.statusMock).toHaveBeenCalledWith(200);
+	});
+
+	it('does not confuse the same event id delivered to two different workflows', async () => {
+		for (const workflowId of ['wf_A', 'wf_B']) {
+			const { context } = fakeWebhookContext({
+				webhookSecret: secret,
+				signatureHeader: signedHeader(Math.floor(Date.now() / 1000), rawBody, secret),
+				rawBody,
+				bodyData: payload,
+				workflowId,
+			});
+			expect(await webhook.call(context)).toEqual({ workflowData: [[{ json: payload }]] });
+		}
+	});
+
+	it('starts the workflow for two DIFFERENT events', async () => {
+		const staticData: Record<string, unknown> = { webhookSecret: secret };
+		for (const id of ['evt_A', 'evt_B']) {
+			const body = { ...payload, id };
+			const raw = Buffer.from(JSON.stringify(body));
+			const { context } = fakeWebhookContext({
+				webhookSecret: secret,
+				signatureHeader: signedHeader(Math.floor(Date.now() / 1000), raw, secret),
+				rawBody: raw,
+				bodyData: body,
+			});
+			(context as unknown as { getWorkflowStaticData: () => Record<string, unknown> }).getWorkflowStaticData = () => staticData;
+			expect(await webhook.call(context)).toEqual({ workflowData: [[{ json: body }]] });
+		}
+	});
+
+	it('keeps the deduplication memory bounded', async () => {
+		const staticData: Record<string, unknown> = { webhookSecret: secret };
+		for (let i = 0; i < 520; i++) {
+			const body = { ...payload, id: `evt_${i}` };
+			const raw = Buffer.from(JSON.stringify(body));
+			const { context } = fakeWebhookContext({
+				webhookSecret: secret,
+				signatureHeader: signedHeader(Math.floor(Date.now() / 1000), raw, secret),
+				rawBody: raw,
+				bodyData: body,
+			});
+			(context as unknown as { getWorkflowStaticData: () => Record<string, unknown> }).getWorkflowStaticData = () => staticData;
+			await webhook.call(context);
+		}
+		expect((staticData.seenEvents as unknown[]).length).toBe(500);
+	});
+
+	it('does not remember an event whose signature was rejected', async () => {
+		const { context } = fakeWebhookContext({
+			webhookSecret: secret,
+			signatureHeader: `t=${Math.floor(Date.now() / 1000)},v1=00`,
+			rawBody,
+			bodyData: payload,
+		});
+		await webhook.call(context);
+		const data = (context as unknown as { getWorkflowStaticData: () => Record<string, unknown> }).getWorkflowStaticData();
+		expect(data.seenEvents).toBeUndefined();
 	});
 
 	it('rejects with 401 and does not start the workflow when the signature is invalid', async () => {

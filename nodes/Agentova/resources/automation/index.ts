@@ -3,6 +3,7 @@ import { automationListDescription } from './list';
 import { automationGetDescription } from './get';
 import { automationActivateDescription } from './activate';
 import { automationPauseDescription } from './pause';
+import { explainControlError } from '../../helpers/controlResponse';
 
 const showOnlyForAutomations = {
 	resource: ['automation'],
@@ -64,7 +65,9 @@ export const automationDescription: INodeProperties[] = [
 						body: {
 							status: 'active',
 						},
+						ignoreHttpStatusErrors: true,
 					},
+					output: { postReceive: [explainControlError] },
 				},
 			},
 			{
@@ -79,7 +82,9 @@ export const automationDescription: INodeProperties[] = [
 						body: {
 							status: 'paused',
 						},
+						ignoreHttpStatusErrors: true,
 					},
+					output: { postReceive: [explainControlError] },
 				},
 			},
 		],
