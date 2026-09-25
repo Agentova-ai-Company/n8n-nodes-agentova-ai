@@ -5,12 +5,17 @@ import { automationListDescription } from './list';
 // Valeurs du contrat API v1 (§3, ressource Automation) — si ce test casse,
 // c'est que l'enum du nœud a divergé du contrat, pas l'inverse.
 const CONTRACT_STATUS_VALUES = ['active', 'paused', 'draft', 'error'];
-const CONTRACT_TYPE_VALUES = ['crm_source', 'lead_ads', 'social_comments', 'social_messages', 'social_story'];
+const CONTRACT_TYPE_VALUES = [
+	'crm_source',
+	'email_messages',
+	'lead_ads',
+	'social_comments',
+	'social_messages',
+	'social_story',
+];
 
 function getFilterOptions(name: 'status' | 'type'): string[] {
-	const filters = automationListDescription.find(
-		(p): p is INodeProperties => p.name === 'filters',
-	);
+	const filters = automationListDescription.find((p): p is INodeProperties => p.name === 'filters');
 	const field = filters?.options?.find((o) => o.name === name) as INodeProperties | undefined;
 	const options = field?.options as INodePropertyOptions[] | undefined;
 	return (options ?? []).map((o) => o.value as string);

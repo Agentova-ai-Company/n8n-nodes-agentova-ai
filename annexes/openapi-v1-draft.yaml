@@ -204,10 +204,13 @@ paths:
         `invalid_request`). 422 `automation_not_controllable` si
         l'automatisation est actuellement `draft` ou `error` : elle n'est pas
         pilotable par l'API tant qu'elle n'a pas été mise en état depuis
-        l'application. La pause conserve l'abonnement au provider : la
-        reprise est immédiate. Après une longue pause d'une boîte Gmail ou
-        Outlook, l'abonnement expiré est renouvelé par tâche planifiée —
-        quelques heures peuvent passer avant la première notification.
+        l'application. La pause conserve l'abonnement au provider : le
+        changement de statut est immédiat dans les deux sens. La LIVRAISON
+        des événements, elle, peut attendre : après une longue pause d'une
+        boîte Gmail ou Outlook, l'abonnement expiré est renouvelé par tâche
+        planifiée, et quelques heures peuvent passer avant la première
+        notification. Les messages reçus pendant une pause Gmail sont traités
+        à la reprise.
       parameters:
         - $ref: '#/components/parameters/AutomationId'
       requestBody:
