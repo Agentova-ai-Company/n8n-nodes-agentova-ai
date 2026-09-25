@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Agentova Public API
-  version: "1.0.0-draft.4"
+  version: "1.0.0-draft.5"
   description: >
     API publique Agentova v1 (DRAFT). Source de vérité machine pour le contrat
     décrit dans 4-CONTRAT-API.md. Statut : draft validé par le référent —
@@ -38,7 +38,7 @@ info:
       personnelles).
 
 
-    ## Disponibilité dans l'API réelle (état au 2026-09-25, draft.4)
+    ## Disponibilité dans l'API réelle (état au 2026-09-25, draft.5)
 
     Servi aujourd'hui : `GET /automations`, `GET /automations/{id}` et
     `PATCH /automations/{id}` pour toutes les automatisations de messagerie
@@ -51,20 +51,47 @@ info:
     `automation.status_changed` (pause, reprise, activation, passage en
     erreur — depuis l'API comme depuis l'application) et `lead.created` pour
     les leads du widget (`source: widget`) et des formulaires Facebook Lead
-    Ads (`source: lead_ads`). `run.completed` est accepté dans un abonnement
-    mais n'est pas émis tant que `GET /runs` n'est pas servi.
+    Ads (`source: lead_ads`) et de la téléphonie (`source: telephony`).
 
-    À venir, dans cet ordre : `GET /leads` (avec les autres sources), `GET
-    /runs` et `GET /automations/{id}/runs` (et `run.completed`), la famille
-    `crm_source` (lecture puis pilotage). Une route du contrat pas encore
-    servie répond
+    Servis aussi : `GET /leads` (sources `widget`, `lead_ads`, `telephony` —
+    `social` et `crm` sont acceptées en filtre mais n'ont pas encore de lead ;
+    l'agent d'un lead téléphonique est exposé sous `agt_…` comme les autres),
+    `GET /runs` et `GET /automations/{id}/runs` avec l'événement
+    `run.completed` (déclencheurs `message` — messages privés Meta, WhatsApp
+    ET e-mail —, `comment`, `story_reply`, `lead_ads`), et la famille
+    `crm_source` en LECTURE (`GET /automations`, `GET /automations/{id}`) :
+    `PATCH` sur une automatisation CRM répond `422
+    automation_not_controllable` avec `details.reason:
+    crm_control_not_available` tant que son pilotage n'est pas livré.
+
+    À venir : le pilotage des automatisations CRM, `run.completed` pour
+    `crm_event`. Une route du contrat pas encore servie répond
     `404 route_not_found` — jamais 405 : un connecteur ne doit pas y lire une
     faute de sa part. La bascule du mock vers l'API réelle (URL, workspace de
     test, clés) est annoncée par le référent au jalon 80 %.
 
-    Clés : une seule famille en v1, `agk_live_…`. Pas de clé `agk_test_` dans
-    cette version du contrat.
+    Clés : une seule famille, `agk_live_…`, sur tous les environnements
+    (décision du 2026-09-25 : il n'y aura pas de clé `agk_test_`).
 
+
+    ## Changements draft.4 → draft.5 (2026-09-25, annoncés aux deux devs)
+
+    draft.5 est ADDITIF : `GET /leads`, `GET /runs`, `GET
+    /automations/{id}/runs`, `run.completed` et la famille `crm_source` (en
+    lecture) sont servis. Précisions : les sources de leads servies (`widget`,
+    `lead_ads`, `telephony`) ; les e-mails produisent des runs `message`
+    (le contrat n'a pas de déclencheur e-mail) ; `Run.actions[].type` est une
+    chaîne libre parmi `reply_message`, `reply_comment`, `send_dm`,
+    `story_reply`, `send_reply`, `save_draft`, `generate_reply`,
+    `send_message`, `add_to_crm` ; `Run.status` = `success` si toutes les
+    actions ont réussi, `failed` si toutes ont échoué, `partial` sinon (un
+    e-mail dont l'envoi automatique est retombé en brouillon est `partial`) ;
+    `PATCH` sur `crm_source` → 422 `details.reason: crm_control_not_available`.
+    Un run Lead Ads sans action configurée est `success` avec `actions: []`
+    (le lead est créé, rien d'autre n'était demandé). Une action non
+    configurée peut apparaître en `success` sur les commentaires (limite
+    connue, à préciser). Aucune route, aucun champ, aucune valeur existante
+    ne change.
 
     ## Changements draft.3 → draft.4 (2026-09-25, annoncés aux deux devs)
 
@@ -301,7 +328,7 @@ paths:
     get:
       operationId: listAutomationRuns
       summary: Historique d'exécutions d'une automatisation
-      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      description: Les plus récentes d'abord (`occurred_at`, puis `id`). 404 si l'automatisation n'est pas servie dans ce workspace.
       parameters:
         - $ref: '#/components/parameters/AutomationId'
         - $ref: '#/components/parameters/Limit'
@@ -345,7 +372,7 @@ paths:
     get:
       operationId: listRuns
       summary: Historique global des exécutions (perform list du trigger "nouvelle exécution")
-      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      description: Les plus récentes d'abord (`occurred_at`, puis `id`). Un `automation_id` que l'API n'a jamais émis donne une page vide.
       parameters:
         - name: automation_id
           in: query
@@ -397,8 +424,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/RouteNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -407,10 +432,10 @@ paths:
       operationId: listLeads
       summary: Leads du workspace (perform list du trigger "nouveau lead")
       description: >
-        Pas encore servi par l'API réelle (voir « Disponibilité »). Le
-        périmètre des sources exposées en v1 (les 5 valeurs de `LeadSource`
-        ou un sous-ensemble) est confirmé avant la livraison de cette route ;
-        toute réduction est annoncée.
+        Les plus récents d'abord (`created_at`, puis `id`). Sources servies :
+        `widget`, `lead_ads`, `telephony` ; `social` et `crm` sont acceptées en
+        filtre mais n'ont pas encore de lead (page vide). Un lead sans agent
+        exposable (agent supprimé) n'est pas servi.
       parameters:
         - name: source
           in: query
