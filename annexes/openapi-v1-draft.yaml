@@ -251,10 +251,13 @@ paths:
       description: >
         Idempotent : re-pauser une automatisation déjà en pause renvoie 200.
         Le corps n'accepte que `active` et `paused` (toute autre valeur → 400
-        `invalid_request`). 422 `automation_not_controllable` si
-        l'automatisation est actuellement `draft` ou `error` : elle n'est pas
-        pilotable par l'API tant qu'elle n'a pas été mise en état depuis
-        l'application. La pause conserve l'abonnement au provider : le
+        `invalid_request`). 422 `automation_not_controllable` dans deux cas,
+        distingués par `details` : l'automatisation est actuellement `draft`
+        ou `error` (`details.status`) — elle n'est pas pilotable par l'API
+        tant qu'elle n'a pas été mise en état depuis l'application ; ou c'est
+        une automatisation `crm_source` (`details.reason:
+        crm_control_not_available`, `details.status` = son statut) — son
+        pilotage n'est pas encore livré. La pause conserve l'abonnement au provider : le
         changement de statut est immédiat dans les deux sens. La LIVRAISON
         des événements, elle, peut attendre : après une longue pause d'une
         boîte Gmail ou Outlook, l'abonnement expiré est renouvelé par tâche
@@ -301,7 +304,9 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          description: L'automatisation est en `draft` ou `error` — non pilotable par l'API
+          description: >
+            Non pilotable par l'API : en `draft` ou `error` (`details.status`),
+            ou de type `crm_source` (`details.reason: crm_control_not_available`).
           headers:
             Cache-Control:
               $ref: '#/components/headers/Cache-Control'
@@ -315,12 +320,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: "automation_not_controllable"
-                  message: "Cette automatisation est en brouillon ou en erreur : activez-la d'abord depuis l'application"
-                  details:
-                    status: "draft"
+              examples:
+                draft_or_error:
+                  summary: Brouillon ou erreur
+                  value:
+                    error:
+                      code: "automation_not_controllable"
+                      message: "Cette automatisation est en brouillon ou en erreur : activez-la d'abord depuis l'application"
+                      details:
+                        status: "draft"
+                crm_not_controllable:
+                  summary: Automatisation CRM (pilotage à venir)
+                  value:
+                    error:
+                      code: "automation_not_controllable"
+                      message: "Le pilotage des automatisations CRM n'est pas encore disponible dans l'API"
+                      details:
+                        status: "active"
+                        reason: "crm_control_not_available"
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -491,8 +508,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/RouteNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -910,7 +925,9 @@ components:
         `workspace_access_denied` (403) · `automation_not_found` (404) ·
         `webhook_not_found` (404) · `route_not_found` (404 : chemin inconnu ou
         route pas encore servie) · `automation_not_controllable` (422 :
-        automatisation en `draft` ou `error`) · `rate_limited` (429) ·
+        automatisation en `draft` ou `error` — `details.status` —, ou de type
+        `crm_source` tant que son pilotage n'est pas livré — `details.reason:
+        crm_control_not_available`) · `rate_limited` (429) ·
         `internal_error` (500, message générique).
       enum:
         - invalid_request
@@ -969,7 +986,8 @@ components:
         privés Meta ET WhatsApp (le champ `provider` les distingue).
         `email_messages` (ajouté en draft.3) = réponse aux e-mails d'une
         boîte Gmail, Outlook ou IMAP. `crm_source` = automatisation
-        déclenchée par un CRM (pas encore servie).
+        déclenchée par un CRM — servie en LECTURE depuis draft.5 ; son
+        pilotage par `PATCH` arrive plus tard (422 en attendant).
       enum: [social_comments, social_story, social_messages, lead_ads, email_messages, crm_source]
 
     LeadSource:
