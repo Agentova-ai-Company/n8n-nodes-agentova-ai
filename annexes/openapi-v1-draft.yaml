@@ -74,8 +74,9 @@ info:
     sans doublon (les doublons sont ignorés), les motifs de refus d'une URL
     dans `details.reason` (`https_required`, `credentials_in_url`,
     `local_address`, `private_address`, `unresolvable_host`, `invalid_url`,
-    `url_too_long`), 8 tentatives de livraison sur ~2 h (30 s, 1, 2, 4, 8,
-    16, 32 min, 1 h) puis abandon, désactivation de l'abonnement après 3
+    `url_too_long`), 8 tentatives de livraison au total — une livraison
+    immédiate puis 7 reprises à 30 s, 1, 2, 4, 8, 16 et 32 min (~1 h) —
+    puis abandon, désactivation de l'abonnement après 3
     abandons consécutifs (`disabled_at`, admins prévenus ; une livraison
     réussie remet le compteur à zéro), journal des livraisons conservé 30
     jours. Aucune route, aucun champ, aucune valeur existante ne change.
@@ -501,8 +502,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/RouteNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
     post:
@@ -517,13 +516,14 @@ paths:
         s'écarte de plus de 5 minutes (anti-rejeu) et déduplique par `id`
         (`evt_…`) : une livraison peut être rejouée. Réponse attendue : un
         `2xx` en moins de 10 secondes, corps ignoré ; aucune redirection n'est
-        suivie (un `3xx` est un échec). Rejeu : 8 tentatives sur ~2 h (30 s,
-        1, 2, 4, 8, 16, 32 min, 1 h) puis abandon ; après 3 abandons
+        suivie (un `3xx` est un échec). Rejeu : 8 tentatives au total — la
+        livraison immédiate, puis 7 reprises à 30 s, 1, 2, 4, 8, 16 et 32 min
+        après chaque échec (~1 h en tout) — puis abandon ; après 3 abandons
         consécutifs, l'abonnement est désactivé (`disabled_at`) et les
         administrateurs du workspace sont prévenus — une livraison réussie
         remet le compteur à zéro. Plafond : 20 abonnements actifs par
-        workspace (`400 invalid_request`, `details.max`). `events` sans
-        doublon (les doublons sont ignorés).
+        workspace (`400 invalid_request`, `details.max`). Les doublons dans
+        `events` sont acceptés et ignorés.
       requestBody:
         required: true
         content:
@@ -539,7 +539,6 @@ paths:
                 events:
                   type: array
                   minItems: 1
-                  uniqueItems: true
                   items:
                     $ref: '#/components/schemas/WebhookEvent'
             example:
@@ -570,7 +569,7 @@ paths:
                 '2XX':
                   description: Livraison acquittée (corps ignoré)
                 '4XX':
-                  description: Livraison refusée — rejouée avec attente croissante, puis abonnement désactivé après échecs prolongés
+                  description: Livraison refusée — rejouée 7 fois avec attente croissante (30 s → 32 min), puis abandonnée ; abonnement désactivé après 3 abandons consécutifs
       responses:
         '201':
           description: Abonnement créé — le secret n'est retourné qu'une seule fois
@@ -625,8 +624,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/RouteNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
 
