@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Agentova Public API
-  version: "1.0.0-draft.3"
+  version: "1.0.0-draft.4"
   description: >
     API publique Agentova v1 (DRAFT). Source de vérité machine pour le contrat
     décrit dans 4-CONTRAT-API.md. Statut : draft validé par le référent —
@@ -38,18 +38,26 @@ info:
       personnelles).
 
 
-    ## Disponibilité dans l'API réelle (état au 2026-09-25, draft.3)
+    ## Disponibilité dans l'API réelle (état au 2026-09-25, draft.4)
 
     Servi aujourd'hui : `GET /automations`, `GET /automations/{id}` et
     `PATCH /automations/{id}` pour toutes les automatisations de messagerie
     du produit — réseaux Meta (`facebook`, `instagram`, `instagram_page`),
     WhatsApp (`whatsapp`) et e-mail (`gmail`, `microsoft_outlook`, `imap`),
     types `social_comments`, `social_story`, `social_messages`, `lead_ads`
-    et `email_messages`.
+    et `email_messages` ; et les **webhooks** : `GET /webhooks`,
+    `POST /webhooks`, `DELETE /webhooks/{id}`, avec la livraison signée
+    décrite dans `callbacks`. Événements émis aujourd'hui :
+    `automation.status_changed` (pause, reprise, activation, passage en
+    erreur — depuis l'API comme depuis l'application) et `lead.created` pour
+    les leads du widget (`source: widget`) et des formulaires Facebook Lead
+    Ads (`source: lead_ads`). `run.completed` est accepté dans un abonnement
+    mais n'est pas émis tant que `GET /runs` n'est pas servi.
 
-    À venir, dans cet ordre : la famille `crm_source` (lecture puis pilotage),
-    `GET /leads`, `GET /runs` et `GET /automations/{id}/runs`, les webhooks.
-    Une route du contrat pas encore servie répond
+    À venir, dans cet ordre : `GET /leads` (avec les autres sources), `GET
+    /runs` et `GET /automations/{id}/runs` (et `run.completed`), la famille
+    `crm_source` (lecture puis pilotage). Une route du contrat pas encore
+    servie répond
     `404 route_not_found` — jamais 405 : un connecteur ne doit pas y lire une
     faute de sa part. La bascule du mock vers l'API réelle (URL, workspace de
     test, clés) est annoncée par le référent au jalon 80 %.
@@ -57,6 +65,20 @@ info:
     Clés : une seule famille en v1, `agk_live_…`. Pas de clé `agk_test_` dans
     cette version du contrat.
 
+
+    ## Changements draft.3 → draft.4 (2026-09-25, annoncés aux deux devs)
+
+    draft.4 est ADDITIF : les webhooks sont désormais servis, et le contrat
+    PRÉCISE ce qui était laissé ouvert : plafond de 20 abonnements actifs par
+    workspace (`400 invalid_request`, `details.max`), `events` non vide et
+    sans doublon (les doublons sont ignorés), les motifs de refus d'une URL
+    dans `details.reason` (`https_required`, `credentials_in_url`,
+    `local_address`, `private_address`, `unresolvable_host`, `invalid_url`,
+    `url_too_long`), 8 tentatives de livraison sur ~2 h (30 s, 1, 2, 4, 8,
+    16, 32 min, 1 h) puis abandon, désactivation de l'abonnement après 3
+    abandons consécutifs (`disabled_at`, admins prévenus ; une livraison
+    réussie remet le compteur à zéro), journal des livraisons conservé 30
+    jours. Aucune route, aucun champ, aucune valeur existante ne change.
 
     ## Changements draft.2 → draft.3 (2026-09-25, annoncés aux deux devs)
 
@@ -452,7 +474,7 @@ paths:
     get:
       operationId: listWebhooks
       summary: Lister les abonnements webhook
-      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      description: Tous les abonnements du workspace, désactivés compris (`disabled_at` posé). Non paginé.
       responses:
         '200':
           description: Liste des abonnements
@@ -487,9 +509,6 @@ paths:
       operationId: createWebhook
       summary: S'abonner à des événements
       description: >
-        Pas encore servi par l'API réelle (voir « Disponibilité »).
-
-
         **Livraison** (décrite dans `callbacks` ci-dessous) : `POST` sur l'URL
         abonnée, corps `WebhookDelivery`, en-tête
         `X-Agentova-Signature: t=<horodatage unix>,v1=<hmac-sha256>` où la
@@ -497,10 +516,14 @@ paths:
         chaîne `{t}.{corps brut}`. Le récepteur rejette une livraison dont `t`
         s'écarte de plus de 5 minutes (anti-rejeu) et déduplique par `id`
         (`evt_…`) : une livraison peut être rejouée. Réponse attendue : un
-        `2xx` en moins de 10 secondes, corps ignoré. Rejeu avec attente
-        croissante bornée ; après des échecs prolongés, l'abonnement est
-        désactivé (`disabled_at`) et les administrateurs du workspace sont
-        prévenus. Plafond d'abonnements par workspace.
+        `2xx` en moins de 10 secondes, corps ignoré ; aucune redirection n'est
+        suivie (un `3xx` est un échec). Rejeu : 8 tentatives sur ~2 h (30 s,
+        1, 2, 4, 8, 16, 32 min, 1 h) puis abandon ; après 3 abandons
+        consécutifs, l'abonnement est désactivé (`disabled_at`) et les
+        administrateurs du workspace sont prévenus — une livraison réussie
+        remet le compteur à zéro. Plafond : 20 abonnements actifs par
+        workspace (`400 invalid_request`, `details.max`). `events` sans
+        doublon (les doublons sont ignorés).
       requestBody:
         required: true
         content:
@@ -515,6 +538,8 @@ paths:
                   description: HTTPS obligatoire ; aucune adresse privée ou locale ; aucun identifiant dans l'URL.
                 events:
                   type: array
+                  minItems: 1
+                  uniqueItems: true
                   items:
                     $ref: '#/components/schemas/WebhookEvent'
             example:
@@ -577,7 +602,12 @@ paths:
                 disabled_at: null
                 secret: "whsec_5f8a3c1e9b2d4f6a8c0e2b4d6f8a0c2e"
         '400':
-          description: Payload invalide (ex. URL non HTTPS, adresse privée)
+          description: >
+            Payload invalide : `details.parameter` nomme le champ (`url`,
+            `events`, `body`) ; pour `url`, `details.reason` dit pourquoi
+            (`https_required`, `credentials_in_url`, `local_address`,
+            `private_address`, `unresolvable_host`, `invalid_url`,
+            `url_too_long`) ; plafond atteint → `details.max`.
           headers:
             Cache-Control:
               $ref: '#/components/headers/Cache-Control'
@@ -604,7 +634,7 @@ paths:
     delete:
       operationId: deleteWebhook
       summary: Se désabonner
-      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      description: Supprime l'abonnement et son journal de livraisons. 204 une seule fois (non idempotent).
       parameters:
         - name: id
           in: path
@@ -632,7 +662,7 @@ paths:
           description: >
             Abonnement absent de ce workspace, déjà supprimé ou inexistant
             (`webhook_not_found` — la suppression n'est pas idempotente : 204
-            une seule fois) ; ou route pas encore servie (`route_not_found`).
+            une seule fois).
           headers:
             Cache-Control:
               $ref: '#/components/headers/Cache-Control'
