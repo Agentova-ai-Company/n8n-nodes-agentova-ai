@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Agentova Public API
-  version: "1.0.0-draft.2"
+  version: "1.0.0-draft.3"
   description: >
     API publique Agentova v1 (DRAFT). Source de vérité machine pour le contrat
     décrit dans 4-CONTRAT-API.md. Statut : draft validé par le référent —
@@ -38,15 +38,18 @@ info:
       personnelles).
 
 
-    ## Disponibilité dans l'API réelle (état au 2026-09-15)
+    ## Disponibilité dans l'API réelle (état au 2026-09-25, draft.3)
 
-    Servi aujourd'hui : `GET /automations` et `GET /automations/{id}` pour la
-    famille sociale Meta (`social_*`, `lead_ads` ; providers `facebook`,
-    `instagram`, `instagram_page`).
+    Servi aujourd'hui : `GET /automations`, `GET /automations/{id}` et
+    `PATCH /automations/{id}` pour toutes les automatisations de messagerie
+    du produit — réseaux Meta (`facebook`, `instagram`, `instagram_page`),
+    WhatsApp (`whatsapp`) et e-mail (`gmail`, `microsoft_outlook`, `imap`),
+    types `social_comments`, `social_story`, `social_messages`, `lead_ads`
+    et `email_messages`.
 
-    À venir, dans cet ordre : `PATCH /automations/{id}`, la famille
-    `crm_source`, `GET /leads`, `GET /runs` et `GET /automations/{id}/runs`,
-    les webhooks. Une route du contrat pas encore servie répond
+    À venir, dans cet ordre : la famille `crm_source` (lecture puis pilotage),
+    `GET /leads`, `GET /runs` et `GET /automations/{id}/runs`, les webhooks.
+    Une route du contrat pas encore servie répond
     `404 route_not_found` — jamais 405 : un connecteur ne doit pas y lire une
     faute de sa part. La bascule du mock vers l'API réelle (URL, workspace de
     test, clés) est annoncée par le référent au jalon 80 %.
@@ -54,6 +57,17 @@ info:
     Clés : une seule famille en v1, `agk_live_…`. Pas de clé `agk_test_` dans
     cette version du contrat.
 
+
+    ## Changements draft.2 → draft.3 (2026-09-25, annoncés aux deux devs)
+
+    draft.3 est ADDITIF : aucune route, aucun champ, aucune valeur existante ne
+    change. Il ajoute (1) la valeur `email_messages` à `AutomationType`,
+    (2) les providers `whatsapp`, `gmail`, `microsoft_outlook` et `imap` dans
+    les valeurs servies de `provider`, (3) `PATCH /automations/{id}` désormais
+    servi, et (4) une précision sur `error` (état repris par l'application,
+    pas « compte déconnecté » : un compte déconnecté disparaît de l'API). Un
+    connecteur bâti sur draft.2 continue de fonctionner tel quel ; un filtre
+    `type` fermé doit simplement accepter la nouvelle valeur.
 
     ## Changements draft.1 → draft.2 (2026-09-15, annoncés aux deux devs)
 
@@ -190,8 +204,13 @@ paths:
         `invalid_request`). 422 `automation_not_controllable` si
         l'automatisation est actuellement `draft` ou `error` : elle n'est pas
         pilotable par l'API tant qu'elle n'a pas été mise en état depuis
-        l'application. Pas encore servi par l'API réelle (voir
-        « Disponibilité ») : `404 route_not_found` en attendant.
+        l'application. La pause conserve l'abonnement au provider : le
+        changement de statut est immédiat dans les deux sens. La LIVRAISON
+        des événements, elle, peut attendre : après une longue pause d'une
+        boîte Gmail ou Outlook, l'abonnement expiré est renouvelé par tâche
+        planifiée, et quelques heures peuvent passer avant la première
+        notification. Les messages reçus pendant une pause Gmail sont traités
+        à la reprise.
       parameters:
         - $ref: '#/components/parameters/AutomationId'
       requestBody:
@@ -738,8 +757,10 @@ components:
     Forbidden:
       description: >
         Clé valide, mais le workspace n'a pas (ou plus) accès au service —
-        abonnement bloqué ou absent. Ce n'est pas un droit par clé : il n'y a
-        pas de permissions par clé en v1.
+        abonnement bloqué (impayé, en pause, paiement initial jamais finalisé).
+        Un workspace sans abonnement est sur le plan gratuit et n'est pas
+        concerné. Ce n'est pas un droit par clé : il n'y a pas de permissions
+        par clé en v1.
       headers:
         Cache-Control:
           $ref: '#/components/headers/Cache-Control'
@@ -883,19 +904,21 @@ components:
       description: >
         `active` : tourne. `paused` : mise en pause depuis l'application (ou
         par `PATCH`). `draft` : jamais activée. `error` : arrêtée sur une
-        erreur (compte déconnecté, jeton révoqué…). Une automatisation dont le
-        compte a été désabonné n'apparaît pas dans l'API.
+        erreur que l'application sait reprendre (connexion e-mail perdue,
+        réabonnement impossible). Un compte déconnecté ou un jeton révoqué
+        désabonne l'automatisation : elle n'apparaît alors plus dans l'API.
       enum: [active, paused, draft, error]
 
     AutomationType:
       type: string
       description: >
-        `social_comments`, `social_story`, `social_messages` et `lead_ads`
-        désignent les réseaux Meta (Facebook, Instagram). Les canaux
-        WhatsApp et e-mail ne sont pas exposés dans cette version ; ils
-        auront leur propre type, annoncé le moment venu. `crm_source` =
-        automatisation déclenchée par un CRM (pas encore servie).
-      enum: [social_comments, social_story, social_messages, lead_ads, crm_source]
+        `social_comments`, `social_story` et `lead_ads` désignent les réseaux
+        Meta (Facebook, Instagram). `social_messages` = réponse aux messages
+        privés Meta ET WhatsApp (le champ `provider` les distingue).
+        `email_messages` (ajouté en draft.3) = réponse aux e-mails d'une
+        boîte Gmail, Outlook ou IMAP. `crm_source` = automatisation
+        déclenchée par un CRM (pas encore servie).
+      enum: [social_comments, social_story, social_messages, lead_ads, email_messages, crm_source]
 
     LeadSource:
       type: string
@@ -923,7 +946,8 @@ components:
           type: string
           description: >
             Valeur brute du connecteur. Servis aujourd'hui : `facebook`,
-            `instagram`, `instagram_page`. D'autres valeurs (ex. `hubspot`)
+            `instagram`, `instagram_page`, `whatsapp`, `gmail`,
+            `microsoft_outlook`, `imap`. D'autres valeurs (ex. `hubspot`)
             arriveront avec `crm_source`. À traiter comme une chaîne libre.
         agent_id:
           type: string

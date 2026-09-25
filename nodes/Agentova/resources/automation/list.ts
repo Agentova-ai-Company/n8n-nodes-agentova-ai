@@ -90,6 +90,7 @@ export const automationListDescription: INodeProperties[] = [
 				type: 'options',
 				options: [
 					{ name: 'CRM Source', value: 'crm_source' },
+					{ name: 'Email Messages', value: 'email_messages' },
 					{ name: 'Lead Ads', value: 'lead_ads' },
 					{ name: 'Social Comments', value: 'social_comments' },
 					{ name: 'Social Messages', value: 'social_messages' },
