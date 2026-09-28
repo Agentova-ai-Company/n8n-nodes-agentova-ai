@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Agentova Public API
-  version: "1.0.0-draft.5"
+  version: "1.0.0-draft.6"
   description: >
     API publique Agentova v1 (DRAFT). Source de vérité machine pour le contrat
     décrit dans 4-CONTRAT-API.md. Statut : draft validé par le référent —
@@ -38,7 +38,7 @@ info:
       personnelles).
 
 
-    ## Disponibilité dans l'API réelle (état au 2026-09-25, draft.5)
+    ## Disponibilité dans l'API réelle (état au 2026-09-28, draft.6)
 
     Servi aujourd'hui : `GET /automations`, `GET /automations/{id}` et
     `PATCH /automations/{id}` pour toutes les automatisations de messagerie
@@ -50,22 +50,26 @@ info:
     décrite dans `callbacks`. Événements émis aujourd'hui :
     `automation.status_changed` (pause, reprise, activation, passage en
     erreur — depuis l'API comme depuis l'application) et `lead.created` pour
-    les leads du widget (`source: widget`) et des formulaires Facebook Lead
-    Ads (`source: lead_ads`) et de la téléphonie (`source: telephony`).
+    les leads du widget et de la saisie manuelle dans l'application
+    (`source: widget`), des formulaires Facebook Lead Ads (`source:
+    lead_ads`) et de la téléphonie (`source: telephony`) — à la création
+    d'un lead seulement, jamais quand un lead existant est mis à jour.
 
     Servis aussi : `GET /leads` (sources `widget`, `lead_ads`, `telephony` —
     `social` et `crm` sont acceptées en filtre mais n'ont pas encore de lead ;
     l'agent d'un lead téléphonique est exposé sous `agt_…` comme les autres),
     `GET /runs` et `GET /automations/{id}/runs` avec l'événement
     `run.completed` (déclencheurs `message` — messages privés Meta, WhatsApp
-    ET e-mail —, `comment`, `story_reply`, `lead_ads`), et la famille
-    `crm_source` en LECTURE (`GET /automations`, `GET /automations/{id}`) :
-    `PATCH` sur une automatisation CRM répond `422
-    automation_not_controllable` avec `details.reason:
-    crm_control_not_available` tant que son pilotage n'est pas livré.
+    ET e-mail —, `comment`, `story_reply`, `lead_ads`, et `crm_event` pour
+    les sources CRM lues directement par Agentova, aujourd'hui Axonaut), et
+    la famille `crm_source` en lecture ET en pilotage (`PATCH`, depuis
+    draft.6).
 
-    À venir : le pilotage des automatisations CRM, `run.completed` pour
-    `crm_event`. Une route du contrat pas encore servie répond
+    Limite connue : les sources CRM relayées par Pipedream (HubSpot, Close,
+    Typeform…) ne produisent pas encore de run — leur exécution passe par
+    un workflow hébergé chez Pipedream qui ne transmet pas l'automatisation
+    concernée. Leur `GET /automations/{id}/runs` renvoie une page vide.
+    Une route du contrat pas encore servie répond
     `404 route_not_found` — jamais 405 : un connecteur ne doit pas y lire une
     faute de sa part. La bascule du mock vers l'API réelle (URL, workspace de
     test, clés) est annoncée par le référent au jalon 80 %.
@@ -73,6 +77,19 @@ info:
     Clés : une seule famille, `agk_live_…`, sur tous les environnements
     (décision du 2026-09-25 : il n'y aura pas de clé `agk_test_`).
 
+
+    ## Changements draft.5 → draft.6 (2026-09-28, annoncés aux deux devs)
+
+    draft.6 est ADDITIF : `PATCH /automations/{id}` pilote désormais les
+    automatisations `crm_source` (même corps, mêmes réponses, même
+    idempotence). La réponse 422 `details.reason: crm_control_not_available`
+    n'est plus renvoyée — un connecteur qui la gérait n'a rien à changer.
+    `run.completed` est émis avec `trigger_type: crm_event` pour les sources
+    CRM lues directement par Agentova (Axonaut), actions `send_message` et
+    `add_to_crm`. `lead.created` est émis aussi pour un lead saisi à la main
+    dans l'application (`source: widget`, comme dans `GET /leads`), et n'est
+    plus émis quand un formulaire resoumis met à jour un lead existant.
+    Aucune route, aucun champ, aucune valeur existante ne change.
 
     ## Changements draft.4 → draft.5 (2026-09-25, annoncés aux deux devs)
 
@@ -251,14 +268,17 @@ paths:
       description: >
         Idempotent : re-pauser une automatisation déjà en pause renvoie 200.
         Le corps n'accepte que `active` et `paused` (toute autre valeur → 400
-        `invalid_request`). 422 `automation_not_controllable` dans deux cas,
-        distingués par `details` : l'automatisation est actuellement `draft`
-        ou `error` (`details.status`) — elle n'est pas pilotable par l'API
-        tant qu'elle n'a pas été mise en état depuis l'application ; ou c'est
-        une automatisation `crm_source` (`details.reason:
-        crm_control_not_available`, `details.status` = son statut) — son
-        pilotage n'est pas encore livré. La pause conserve l'abonnement au provider : le
-        changement de statut est immédiat dans les deux sens. La LIVRAISON
+        `invalid_request`). 422 `automation_not_controllable` si
+        l'automatisation est actuellement `draft` ou `error`
+        (`details.status`) — elle n'est pas pilotable par l'API tant qu'elle
+        n'a pas été mise en état depuis l'application. Pour la messagerie, la
+        pause conserve l'abonnement au provider : le changement de statut est
+        immédiat dans les deux sens. Pour une automatisation `crm_source`
+        (depuis draft.6), la pause coupe l'écoute du CRM et la reprise la
+        rétablit : les événements CRM survenus PENDANT la pause ne sont pas
+        rejoués. Si l'écoute ne peut pas être rétablie, la réponse 200 porte
+        `status: error` — l'automatisation se reprend alors depuis
+        l'application. La LIVRAISON
         des événements, elle, peut attendre : après une longue pause d'une
         boîte Gmail ou Outlook, l'abonnement expiré est renouvelé par tâche
         planifiée, et quelques heures peuvent passer avant la première
@@ -305,8 +325,7 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           description: >
-            Non pilotable par l'API : en `draft` ou `error` (`details.status`),
-            ou de type `crm_source` (`details.reason: crm_control_not_available`).
+            Non pilotable par l'API : en `draft` ou `error` (`details.status`).
           headers:
             Cache-Control:
               $ref: '#/components/headers/Cache-Control'
@@ -329,15 +348,6 @@ paths:
                       message: "Cette automatisation est en brouillon ou en erreur : activez-la d'abord depuis l'application"
                       details:
                         status: "draft"
-                crm_not_controllable:
-                  summary: Automatisation CRM (pilotage à venir)
-                  value:
-                    error:
-                      code: "automation_not_controllable"
-                      message: "Le pilotage des automatisations CRM n'est pas encore disponible dans l'API"
-                      details:
-                        status: "active"
-                        reason: "crm_control_not_available"
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -925,9 +935,8 @@ components:
         `workspace_access_denied` (403) · `automation_not_found` (404) ·
         `webhook_not_found` (404) · `route_not_found` (404 : chemin inconnu ou
         route pas encore servie) · `automation_not_controllable` (422 :
-        automatisation en `draft` ou `error` — `details.status` —, ou de type
-        `crm_source` tant que son pilotage n'est pas livré — `details.reason:
-        crm_control_not_available`) · `rate_limited` (429) ·
+        automatisation en `draft` ou `error` — `details.status`) ·
+        `rate_limited` (429) ·
         `internal_error` (500, message générique).
       enum:
         - invalid_request
@@ -986,8 +995,8 @@ components:
         privés Meta ET WhatsApp (le champ `provider` les distingue).
         `email_messages` (ajouté en draft.3) = réponse aux e-mails d'une
         boîte Gmail, Outlook ou IMAP. `crm_source` = automatisation
-        déclenchée par un CRM — servie en LECTURE depuis draft.5 ; son
-        pilotage par `PATCH` arrive plus tard (422 en attendant).
+        déclenchée par un CRM — servie en lecture depuis draft.5, pilotable
+        par `PATCH` depuis draft.6.
       enum: [social_comments, social_story, social_messages, lead_ads, email_messages, crm_source]
 
     LeadSource:
