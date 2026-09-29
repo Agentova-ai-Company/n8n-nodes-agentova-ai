@@ -52,7 +52,7 @@ npm run build
 npm run dev   # runs a local n8n instance with this node loaded
 ```
 
-The credential's **Base URL** field defaults to `https://api.agentova.ai/v1` (production). Leave
+The credential's **Base URL** field defaults to `https://core-api.agentova.ai/v1` (production). Leave
 it as-is unless Agentova gives you another URL — a local mock, or the test workspace promised at
 the 80% milestone.
 

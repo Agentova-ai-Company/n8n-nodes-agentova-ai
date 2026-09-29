@@ -148,7 +148,7 @@ export class AgentovaTrigger implements INodeType {
 					{
 						name: 'Automation Status Changed',
 						value: 'automation.status_changed',
-						description: 'An automation was activated or paused',
+						description: 'An automation was activated, paused, or went into error',
 					},
 					{
 						name: 'Lead Created',
