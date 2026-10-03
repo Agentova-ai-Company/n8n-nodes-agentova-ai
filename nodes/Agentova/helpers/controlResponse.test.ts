@@ -11,6 +11,14 @@ describe('explainControlError (Activate / Pause)', () => {
 		expect(await explainControlError.call(context, items, response(200, items[0].json))).toBe(items);
 	});
 
+	it('pausing an already-paused automation stays a plain 200, no error (G5, contrat §Ressources, idempotence)', async () => {
+		const alreadyPaused: INodeExecutionData[] = [{ json: { id: 'aut_1', status: 'paused' } }];
+		const body = { id: 'aut_1', status: 'paused' };
+		await expect(explainControlError.call(context, alreadyPaused, response(200, body))).resolves.toBe(
+			alreadyPaused,
+		);
+	});
+
 	it('explains route_not_found instead of a bare 404 (contrat § Disponibilité)', async () => {
 		const body = { error: { code: 'route_not_found', message: 'x', details: {} } };
 		await expect(explainControlError.call(context, items, response(404, body))).rejects.toThrow(

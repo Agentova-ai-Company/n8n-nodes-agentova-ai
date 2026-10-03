@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Agentova Public API
-  version: "1.0.0-draft.2"
+  version: "1.0.0-draft.6"
   description: >
     API publique Agentova v1 (DRAFT). Source de vérité machine pour le contrat
     décrit dans 4-CONTRAT-API.md. Statut : draft validé par le référent —
@@ -38,22 +38,103 @@ info:
       personnelles).
 
 
-    ## Disponibilité dans l'API réelle (état au 2026-09-15)
+    ## Disponibilité dans l'API réelle (état au 2026-09-28, draft.6)
 
-    Servi aujourd'hui : `GET /automations` et `GET /automations/{id}` pour la
-    famille sociale Meta (`social_*`, `lead_ads` ; providers `facebook`,
-    `instagram`, `instagram_page`).
+    Servi aujourd'hui : `GET /automations`, `GET /automations/{id}` et
+    `PATCH /automations/{id}` pour toutes les automatisations de messagerie
+    du produit — réseaux Meta (`facebook`, `instagram`, `instagram_page`),
+    WhatsApp (`whatsapp`) et e-mail (`gmail`, `microsoft_outlook`, `imap`),
+    types `social_comments`, `social_story`, `social_messages`, `lead_ads`
+    et `email_messages` ; et les **webhooks** : `GET /webhooks`,
+    `POST /webhooks`, `DELETE /webhooks/{id}`, avec la livraison signée
+    décrite dans `callbacks`. Événements émis aujourd'hui :
+    `automation.status_changed` (pause, reprise, activation, passage en
+    erreur — depuis l'API comme depuis l'application) et `lead.created` pour
+    les leads du widget et de la saisie manuelle dans l'application
+    (`source: widget`), des formulaires Facebook Lead Ads (`source:
+    lead_ads`) et de la téléphonie (`source: telephony`) — à la création
+    d'un lead seulement, jamais quand un lead existant est mis à jour.
 
-    À venir, dans cet ordre : `PATCH /automations/{id}`, la famille
-    `crm_source`, `GET /leads`, `GET /runs` et `GET /automations/{id}/runs`,
-    les webhooks. Une route du contrat pas encore servie répond
+    Servis aussi : `GET /leads` (sources `widget`, `lead_ads`, `telephony` —
+    `social` et `crm` sont acceptées en filtre mais n'ont pas encore de lead ;
+    l'agent d'un lead téléphonique est exposé sous `agt_…` comme les autres),
+    `GET /runs` et `GET /automations/{id}/runs` avec l'événement
+    `run.completed` (déclencheurs `message` — messages privés Meta, WhatsApp
+    ET e-mail —, `comment`, `story_reply`, `lead_ads`, et `crm_event` pour
+    les sources CRM lues directement par Agentova, aujourd'hui Axonaut), et
+    la famille `crm_source` en lecture ET en pilotage (`PATCH`, depuis
+    draft.6).
+
+    Limite connue : les sources CRM relayées par Pipedream (HubSpot, Close,
+    Typeform…) ne produisent pas encore de run — leur exécution passe par
+    un workflow hébergé chez Pipedream qui ne transmet pas l'automatisation
+    concernée. Leur `GET /automations/{id}/runs` renvoie une page vide.
+    Une route du contrat pas encore servie répond
     `404 route_not_found` — jamais 405 : un connecteur ne doit pas y lire une
     faute de sa part. La bascule du mock vers l'API réelle (URL, workspace de
     test, clés) est annoncée par le référent au jalon 80 %.
 
-    Clés : une seule famille en v1, `agk_live_…`. Pas de clé `agk_test_` dans
-    cette version du contrat.
+    Clés : une seule famille, `agk_live_…`, sur tous les environnements
+    (décision du 2026-09-25 : il n'y aura pas de clé `agk_test_`).
 
+
+    ## Changements draft.5 → draft.6 (2026-09-28, annoncés aux deux devs)
+
+    draft.6 est ADDITIF : `PATCH /automations/{id}` pilote désormais les
+    automatisations `crm_source` (même corps, mêmes réponses, même
+    idempotence). La réponse 422 `details.reason: crm_control_not_available`
+    n'est plus renvoyée — un connecteur qui la gérait n'a rien à changer.
+    `run.completed` est émis avec `trigger_type: crm_event` pour les sources
+    CRM lues directement par Agentova (Axonaut), actions `send_message` et
+    `add_to_crm`. `lead.created` est émis aussi pour un lead saisi à la main
+    dans l'application (`source: widget`, comme dans `GET /leads`), et n'est
+    plus émis quand un formulaire resoumis met à jour un lead existant.
+    Aucune route, aucun champ, aucune valeur existante ne change.
+
+    ## Changements draft.4 → draft.5 (2026-09-25, annoncés aux deux devs)
+
+    draft.5 est ADDITIF : `GET /leads`, `GET /runs`, `GET
+    /automations/{id}/runs`, `run.completed` et la famille `crm_source` (en
+    lecture) sont servis. Précisions : les sources de leads servies (`widget`,
+    `lead_ads`, `telephony`) ; les e-mails produisent des runs `message`
+    (le contrat n'a pas de déclencheur e-mail) ; `Run.actions[].type` est une
+    chaîne libre parmi `reply_message`, `reply_comment`, `send_dm`,
+    `story_reply`, `send_reply`, `save_draft`, `generate_reply`,
+    `send_message`, `add_to_crm` ; `Run.status` = `success` si toutes les
+    actions ont réussi, `failed` si toutes ont échoué, `partial` sinon (un
+    e-mail dont l'envoi automatique est retombé en brouillon est `partial`) ;
+    `PATCH` sur `crm_source` → 422 `details.reason: crm_control_not_available`.
+    Un run Lead Ads sans action configurée est `success` avec `actions: []`
+    (le lead est créé, rien d'autre n'était demandé). Une action non
+    configurée peut apparaître en `success` sur les commentaires (limite
+    connue, à préciser). Aucune route, aucun champ, aucune valeur existante
+    ne change.
+
+    ## Changements draft.3 → draft.4 (2026-09-25, annoncés aux deux devs)
+
+    draft.4 est ADDITIF : les webhooks sont désormais servis, et le contrat
+    PRÉCISE ce qui était laissé ouvert : plafond de 20 abonnements actifs par
+    workspace (`400 invalid_request`, `details.max`), `events` non vide et
+    sans doublon (les doublons sont ignorés), les motifs de refus d'une URL
+    dans `details.reason` (`https_required`, `credentials_in_url`,
+    `local_address`, `private_address`, `unresolvable_host`, `invalid_url`,
+    `url_too_long`), 8 tentatives de livraison au total — une livraison
+    immédiate puis 7 reprises à 30 s, 1, 2, 4, 8, 16 et 32 min (~1 h) —
+    puis abandon, désactivation de l'abonnement après 3
+    abandons consécutifs (`disabled_at`, admins prévenus ; une livraison
+    réussie remet le compteur à zéro), journal des livraisons conservé 30
+    jours. Aucune route, aucun champ, aucune valeur existante ne change.
+
+    ## Changements draft.2 → draft.3 (2026-09-25, annoncés aux deux devs)
+
+    draft.3 est ADDITIF : aucune route, aucun champ, aucune valeur existante ne
+    change. Il ajoute (1) la valeur `email_messages` à `AutomationType`,
+    (2) les providers `whatsapp`, `gmail`, `microsoft_outlook` et `imap` dans
+    les valeurs servies de `provider`, (3) `PATCH /automations/{id}` désormais
+    servi, et (4) une précision sur `error` (état repris par l'application,
+    pas « compte déconnecté » : un compte déconnecté disparaît de l'API). Un
+    connecteur bâti sur draft.2 continue de fonctionner tel quel ; un filtre
+    `type` fermé doit simplement accepter la nouvelle valeur.
 
     ## Changements draft.1 → draft.2 (2026-09-15, annoncés aux deux devs)
 
@@ -188,10 +269,21 @@ paths:
         Idempotent : re-pauser une automatisation déjà en pause renvoie 200.
         Le corps n'accepte que `active` et `paused` (toute autre valeur → 400
         `invalid_request`). 422 `automation_not_controllable` si
-        l'automatisation est actuellement `draft` ou `error` : elle n'est pas
-        pilotable par l'API tant qu'elle n'a pas été mise en état depuis
-        l'application. Pas encore servi par l'API réelle (voir
-        « Disponibilité ») : `404 route_not_found` en attendant.
+        l'automatisation est actuellement `draft` ou `error`
+        (`details.status`) — elle n'est pas pilotable par l'API tant qu'elle
+        n'a pas été mise en état depuis l'application. Pour la messagerie, la
+        pause conserve l'abonnement au provider : le changement de statut est
+        immédiat dans les deux sens. Pour une automatisation `crm_source`
+        (depuis draft.6), la pause coupe l'écoute du CRM et la reprise la
+        rétablit : les événements CRM survenus PENDANT la pause ne sont pas
+        rejoués. Si l'écoute ne peut pas être rétablie, la réponse 200 porte
+        `status: error` — l'automatisation se reprend alors depuis
+        l'application. La LIVRAISON
+        des événements, elle, peut attendre : après une longue pause d'une
+        boîte Gmail ou Outlook, l'abonnement expiré est renouvelé par tâche
+        planifiée, et quelques heures peuvent passer avant la première
+        notification. Les messages reçus pendant une pause Gmail sont traités
+        à la reprise.
       parameters:
         - $ref: '#/components/parameters/AutomationId'
       requestBody:
@@ -232,7 +324,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          description: L'automatisation est en `draft` ou `error` — non pilotable par l'API
+          description: >
+            Non pilotable par l'API : en `draft` ou `error` (`details.status`).
           headers:
             Cache-Control:
               $ref: '#/components/headers/Cache-Control'
@@ -246,12 +339,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: "automation_not_controllable"
-                  message: "Cette automatisation est en brouillon ou en erreur : activez-la d'abord depuis l'application"
-                  details:
-                    status: "draft"
+              examples:
+                draft_or_error:
+                  summary: Brouillon ou erreur
+                  value:
+                    error:
+                      code: "automation_not_controllable"
+                      message: "Cette automatisation est en brouillon ou en erreur : activez-la d'abord depuis l'application"
+                      details:
+                        status: "draft"
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -259,7 +355,7 @@ paths:
     get:
       operationId: listAutomationRuns
       summary: Historique d'exécutions d'une automatisation
-      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      description: Les plus récentes d'abord (`occurred_at`, puis `id`). 404 si l'automatisation n'est pas servie dans ce workspace.
       parameters:
         - $ref: '#/components/parameters/AutomationId'
         - $ref: '#/components/parameters/Limit'
@@ -303,7 +399,7 @@ paths:
     get:
       operationId: listRuns
       summary: Historique global des exécutions (perform list du trigger "nouvelle exécution")
-      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      description: Les plus récentes d'abord (`occurred_at`, puis `id`). Un `automation_id` que l'API n'a jamais émis donne une page vide.
       parameters:
         - name: automation_id
           in: query
@@ -355,8 +451,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/RouteNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -365,10 +459,10 @@ paths:
       operationId: listLeads
       summary: Leads du workspace (perform list du trigger "nouveau lead")
       description: >
-        Pas encore servi par l'API réelle (voir « Disponibilité »). Le
-        périmètre des sources exposées en v1 (les 5 valeurs de `LeadSource`
-        ou un sous-ensemble) est confirmé avant la livraison de cette route ;
-        toute réduction est annoncée.
+        Les plus récents d'abord (`created_at`, puis `id`). Sources servies :
+        `widget`, `lead_ads`, `telephony` ; `social` et `crm` sont acceptées en
+        filtre mais n'ont pas encore de lead (page vide). Un lead sans agent
+        exposable (agent supprimé) n'est pas servi.
       parameters:
         - name: source
           in: query
@@ -424,8 +518,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/RouteNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -433,7 +525,7 @@ paths:
     get:
       operationId: listWebhooks
       summary: Lister les abonnements webhook
-      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      description: Tous les abonnements du workspace, désactivés compris (`disabled_at` posé). Non paginé.
       responses:
         '200':
           description: Liste des abonnements
@@ -460,17 +552,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/RouteNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
     post:
       operationId: createWebhook
       summary: S'abonner à des événements
       description: >
-        Pas encore servi par l'API réelle (voir « Disponibilité »).
-
-
         **Livraison** (décrite dans `callbacks` ci-dessous) : `POST` sur l'URL
         abonnée, corps `WebhookDelivery`, en-tête
         `X-Agentova-Signature: t=<horodatage unix>,v1=<hmac-sha256>` où la
@@ -478,10 +565,15 @@ paths:
         chaîne `{t}.{corps brut}`. Le récepteur rejette une livraison dont `t`
         s'écarte de plus de 5 minutes (anti-rejeu) et déduplique par `id`
         (`evt_…`) : une livraison peut être rejouée. Réponse attendue : un
-        `2xx` en moins de 10 secondes, corps ignoré. Rejeu avec attente
-        croissante bornée ; après des échecs prolongés, l'abonnement est
-        désactivé (`disabled_at`) et les administrateurs du workspace sont
-        prévenus. Plafond d'abonnements par workspace.
+        `2xx` en moins de 10 secondes, corps ignoré ; aucune redirection n'est
+        suivie (un `3xx` est un échec). Rejeu : 8 tentatives au total — la
+        livraison immédiate, puis 7 reprises à 30 s, 1, 2, 4, 8, 16 et 32 min
+        après chaque échec (~1 h en tout) — puis abandon ; après 3 abandons
+        consécutifs, l'abonnement est désactivé (`disabled_at`) et les
+        administrateurs du workspace sont prévenus — une livraison réussie
+        remet le compteur à zéro. Plafond : 20 abonnements actifs par
+        workspace (`400 invalid_request`, `details.max`). Les doublons dans
+        `events` sont acceptés et ignorés.
       requestBody:
         required: true
         content:
@@ -496,6 +588,7 @@ paths:
                   description: HTTPS obligatoire ; aucune adresse privée ou locale ; aucun identifiant dans l'URL.
                 events:
                   type: array
+                  minItems: 1
                   items:
                     $ref: '#/components/schemas/WebhookEvent'
             example:
@@ -526,7 +619,7 @@ paths:
                 '2XX':
                   description: Livraison acquittée (corps ignoré)
                 '4XX':
-                  description: Livraison refusée — rejouée avec attente croissante, puis abonnement désactivé après échecs prolongés
+                  description: Livraison refusée — rejouée 7 fois avec attente croissante (30 s → 32 min), puis abandonnée ; abonnement désactivé après 3 abandons consécutifs
       responses:
         '201':
           description: Abonnement créé — le secret n'est retourné qu'une seule fois
@@ -558,7 +651,12 @@ paths:
                 disabled_at: null
                 secret: "whsec_5f8a3c1e9b2d4f6a8c0e2b4d6f8a0c2e"
         '400':
-          description: Payload invalide (ex. URL non HTTPS, adresse privée)
+          description: >
+            Payload invalide : `details.parameter` nomme le champ (`url`,
+            `events`, `body`) ; pour `url`, `details.reason` dit pourquoi
+            (`https_required`, `credentials_in_url`, `local_address`,
+            `private_address`, `unresolvable_host`, `invalid_url`,
+            `url_too_long`) ; plafond atteint → `details.max`.
           headers:
             Cache-Control:
               $ref: '#/components/headers/Cache-Control'
@@ -576,8 +674,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/RouteNotFound'
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -585,7 +681,7 @@ paths:
     delete:
       operationId: deleteWebhook
       summary: Se désabonner
-      description: Pas encore servi par l'API réelle (voir « Disponibilité »).
+      description: Supprime l'abonnement et son journal de livraisons. 204 une seule fois (non idempotent).
       parameters:
         - name: id
           in: path
@@ -613,7 +709,7 @@ paths:
           description: >
             Abonnement absent de ce workspace, déjà supprimé ou inexistant
             (`webhook_not_found` — la suppression n'est pas idempotente : 204
-            une seule fois) ; ou route pas encore servie (`route_not_found`).
+            une seule fois).
           headers:
             Cache-Control:
               $ref: '#/components/headers/Cache-Control'
@@ -738,8 +834,10 @@ components:
     Forbidden:
       description: >
         Clé valide, mais le workspace n'a pas (ou plus) accès au service —
-        abonnement bloqué ou absent. Ce n'est pas un droit par clé : il n'y a
-        pas de permissions par clé en v1.
+        abonnement bloqué (impayé, en pause, paiement initial jamais finalisé).
+        Un workspace sans abonnement est sur le plan gratuit et n'est pas
+        concerné. Ce n'est pas un droit par clé : il n'y a pas de permissions
+        par clé en v1.
       headers:
         Cache-Control:
           $ref: '#/components/headers/Cache-Control'
@@ -837,7 +935,8 @@ components:
         `workspace_access_denied` (403) · `automation_not_found` (404) ·
         `webhook_not_found` (404) · `route_not_found` (404 : chemin inconnu ou
         route pas encore servie) · `automation_not_controllable` (422 :
-        automatisation en `draft` ou `error`) · `rate_limited` (429) ·
+        automatisation en `draft` ou `error` — `details.status`) ·
+        `rate_limited` (429) ·
         `internal_error` (500, message générique).
       enum:
         - invalid_request
@@ -883,19 +982,22 @@ components:
       description: >
         `active` : tourne. `paused` : mise en pause depuis l'application (ou
         par `PATCH`). `draft` : jamais activée. `error` : arrêtée sur une
-        erreur (compte déconnecté, jeton révoqué…). Une automatisation dont le
-        compte a été désabonné n'apparaît pas dans l'API.
+        erreur que l'application sait reprendre (connexion e-mail perdue,
+        réabonnement impossible). Un compte déconnecté ou un jeton révoqué
+        désabonne l'automatisation : elle n'apparaît alors plus dans l'API.
       enum: [active, paused, draft, error]
 
     AutomationType:
       type: string
       description: >
-        `social_comments`, `social_story`, `social_messages` et `lead_ads`
-        désignent les réseaux Meta (Facebook, Instagram). Les canaux
-        WhatsApp et e-mail ne sont pas exposés dans cette version ; ils
-        auront leur propre type, annoncé le moment venu. `crm_source` =
-        automatisation déclenchée par un CRM (pas encore servie).
-      enum: [social_comments, social_story, social_messages, lead_ads, crm_source]
+        `social_comments`, `social_story` et `lead_ads` désignent les réseaux
+        Meta (Facebook, Instagram). `social_messages` = réponse aux messages
+        privés Meta ET WhatsApp (le champ `provider` les distingue).
+        `email_messages` (ajouté en draft.3) = réponse aux e-mails d'une
+        boîte Gmail, Outlook ou IMAP. `crm_source` = automatisation
+        déclenchée par un CRM — servie en lecture depuis draft.5, pilotable
+        par `PATCH` depuis draft.6.
+      enum: [social_comments, social_story, social_messages, lead_ads, email_messages, crm_source]
 
     LeadSource:
       type: string
@@ -923,7 +1025,8 @@ components:
           type: string
           description: >
             Valeur brute du connecteur. Servis aujourd'hui : `facebook`,
-            `instagram`, `instagram_page`. D'autres valeurs (ex. `hubspot`)
+            `instagram`, `instagram_page`, `whatsapp`, `gmail`,
+            `microsoft_outlook`, `imap`. D'autres valeurs (ex. `hubspot`)
             arriveront avec `crm_source`. À traiter comme une chaîne libre.
         agent_id:
           type: string
