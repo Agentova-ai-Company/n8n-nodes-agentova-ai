@@ -5,6 +5,9 @@ const showOnlyForAutomationList = {
 	resource: ['automation'],
 };
 
+/** Plafond de `limit` au contrat (paramètre `Limit`, maximum 100). */
+export const MAX_PAGE_SIZE = 100;
+
 export const automationListDescription: INodeProperties[] = [
 	{
 		displayName: 'Return All',
@@ -14,8 +17,16 @@ export const automationListDescription: INodeProperties[] = [
 		default: false,
 		description: 'Whether to return all results or only up to a given limit',
 		routing: {
+			// Pages pleines : sans `limit`, l'API sert 25 automatisations par page,
+			// soit quatre fois plus de requêtes sur le quota de la clé. Return All
+			// décoché, le champ Limit envoie aussi `limit` et son `maxResults` borne
+			// la sortie quel que soit l'ordre de traitement (même patron que le
+			// modèle officiel n8n GithubIssues : `per_page` à 100 sur Return All).
 			send: {
 				paginate: '={{ $value }}',
+				type: 'query',
+				property: 'limit',
+				value: String(MAX_PAGE_SIZE),
 			},
 			operations: {
 				pagination: {
@@ -44,7 +55,7 @@ export const automationListDescription: INodeProperties[] = [
 		},
 		typeOptions: {
 			minValue: 1,
-			maxValue: 100,
+			maxValue: MAX_PAGE_SIZE,
 		},
 		default: 50,
 		description: 'Max number of results to return',
