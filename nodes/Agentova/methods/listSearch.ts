@@ -1,4 +1,5 @@
 import type { ILoadOptionsFunctions, INodeListSearchResult } from 'n8n-workflow';
+import { toNodeApiError } from '../helpers/apiError';
 
 interface Automation {
 	id: string;
@@ -27,13 +28,19 @@ export async function searchAutomations(
 	let cursor: string | null = null;
 
 	for (let page = 0; page < MAX_PAGES; page++) {
-		const response = (await this.helpers.httpRequestWithAuthentication.call(this, 'agentovaApi', {
-			method: 'GET',
-			baseURL: baseUrl,
-			url: '/automations',
-			qs: { limit: 100, ...(cursor ? { cursor } : {}) },
-			json: true,
-		})) as AutomationListResponse;
+		let response: AutomationListResponse;
+		try {
+			response = (await this.helpers.httpRequestWithAuthentication.call(this, 'agentovaApi', {
+				method: 'GET',
+				baseURL: baseUrl,
+				url: '/automations',
+				qs: { limit: 100, ...(cursor ? { cursor } : {}) },
+				json: true,
+			})) as AutomationListResponse;
+		} catch (error) {
+			// Même texte anglais que les opérations : choisi par `error.code`.
+			throw toNodeApiError(this.getNode(), error);
+		}
 
 		automations.push(...response.data);
 
@@ -42,7 +49,9 @@ export async function searchAutomations(
 	}
 
 	const filtered = filter
-		? automations.filter((automation) => automation.name.toLowerCase().includes(filter.toLowerCase()))
+		? automations.filter((automation) =>
+				automation.name.toLowerCase().includes(filter.toLowerCase()),
+			)
 		: automations;
 
 	return {

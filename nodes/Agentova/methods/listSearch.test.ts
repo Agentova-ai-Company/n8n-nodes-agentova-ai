@@ -16,6 +16,7 @@ function fakeContext(pages: Array<Array<{ id: string; name: string }>>) {
 	const context = {
 		helpers: { httpRequestWithAuthentication },
 		getCredentials,
+		getNode: () => ({ name: 'Agentova' }),
 	} as unknown as ILoadOptionsFunctions;
 	return { context, httpRequestWithAuthentication };
 }
@@ -84,5 +85,21 @@ describe('searchAutomations', () => {
 			{ name: 'Page One Automation', value: '1' },
 			{ name: 'Page Two Automation', value: '2' },
 		]);
+	});
+
+	it('shows the English message chosen by error.code when the API refuses the key', async () => {
+		const { context, httpRequestWithAuthentication } = fakeContext([]);
+		httpRequestWithAuthentication.mockRejectedValueOnce({
+			isAxiosError: true,
+			status: 401,
+			response: {
+				status: 401,
+				data: { error: { code: 'invalid_api_key', message: 'x', details: {} } },
+			},
+		});
+
+		await expect(searchAutomations.call(context)).rejects.toThrow(
+			'Invalid or revoked Agentova API key',
+		);
 	});
 });

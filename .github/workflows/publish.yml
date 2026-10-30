@@ -9,9 +9,9 @@
 #
 # This workflow never puts a version live on its own. It STAGES it:
 #
-#   1. a version tag is pushed on main → this job runs lint, build, then
-#      `npm stage publish`, which uploads the package to npm in a non-public,
-#      pending state (npm "staged publishing");
+#   1. a version tag is pushed on main → this job runs lint, tests, build,
+#      then `npm stage publish`, which uploads the package to npm in a
+#      non-public, pending state (npm "staged publishing");
 #   2. a package maintainer reviews it on npmjs.com ("Staged Packages" tab)
 #      and approves it with 2FA. Only then does the version become public.
 #
@@ -125,14 +125,19 @@ jobs:
           fi
 
       # Les gardes ci-dessus ont tourné : aucun script de dépendance n'est
-      # exécuté pour un tag refusé. `--ignore-scripts` : lint et build n'ont
-      # besoin d'aucun script d'installation (vérifié), et un script compromis
+      # exécuté pour un tag refusé. `--ignore-scripts` : lint, tests et build
+      # n'ont besoin d'aucun script d'installation (vérifié), et un script compromis
       # tournerait ici avec `id-token: write` dans l'environnement.
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
       - name: Lint
         run: npm run lint
+
+      # La CI les lance déjà sur chaque PR ; on les relance ici parce que c'est
+      # CE commit, et lui seul, qui part sur npm.
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build

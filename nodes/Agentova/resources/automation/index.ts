@@ -3,7 +3,7 @@ import { automationListDescription } from './list';
 import { automationGetDescription } from './get';
 import { automationActivateDescription } from './activate';
 import { automationPauseDescription } from './pause';
-import { explainControlError } from '../../helpers/controlResponse';
+import { CONTROL_STATUS, expectStatus, explainApiError } from '../../helpers/controlResponse';
 
 const showOnlyForAutomations = {
 	resource: ['automation'],
@@ -28,9 +28,11 @@ export const automationDescription: INodeProperties[] = [
 					request: {
 						method: 'GET',
 						url: '/automations',
+						ignoreHttpStatusErrors: true,
 					},
 					output: {
 						postReceive: [
+							explainApiError,
 							{
 								type: 'rootProperty',
 								properties: {
@@ -50,7 +52,9 @@ export const automationDescription: INodeProperties[] = [
 					request: {
 						method: 'GET',
 						url: '=/automations/{{$parameter.automationId}}',
+						ignoreHttpStatusErrors: true,
 					},
+					output: { postReceive: [explainApiError] },
 				},
 			},
 			{
@@ -63,11 +67,11 @@ export const automationDescription: INodeProperties[] = [
 						method: 'PATCH',
 						url: '=/automations/{{$parameter.automationId}}',
 						body: {
-							status: 'active',
+							status: CONTROL_STATUS.ACTIVE,
 						},
 						ignoreHttpStatusErrors: true,
 					},
-					output: { postReceive: [explainControlError] },
+					output: { postReceive: [expectStatus(CONTROL_STATUS.ACTIVE)] },
 				},
 			},
 			{
@@ -80,11 +84,11 @@ export const automationDescription: INodeProperties[] = [
 						method: 'PATCH',
 						url: '=/automations/{{$parameter.automationId}}',
 						body: {
-							status: 'paused',
+							status: CONTROL_STATUS.PAUSED,
 						},
 						ignoreHttpStatusErrors: true,
 					},
-					output: { postReceive: [explainControlError] },
+					output: { postReceive: [expectStatus(CONTROL_STATUS.PAUSED)] },
 				},
 			},
 		],
