@@ -12,8 +12,8 @@ export class AgentovaApi implements ICredentialType {
 	displayName = 'Agentova API';
 
 	icon: Icon = {
-		light: 'file:../nodes/Agentova/agentova.svg',
-		dark: 'file:../nodes/Agentova/agentova.dark.svg',
+		light: 'file:../nodes/Agentova/mark-ink.svg',
+		dark: 'file:../nodes/Agentova/mark-white.svg',
 	};
 
 	documentationUrl = 'https://docs.agentova.ai/n8n/credentials';
