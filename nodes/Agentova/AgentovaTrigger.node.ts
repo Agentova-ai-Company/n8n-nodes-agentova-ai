@@ -287,7 +287,7 @@ export class AgentovaTrigger implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Agentova Trigger',
 		name: 'agentovaTrigger',
-		icon: { light: 'file:agentova.svg', dark: 'file:agentova.dark.svg' },
+		icon: { light: 'file:mark-ink.svg', dark: 'file:mark-white.svg' },
 		group: ['trigger'],
 		version: 1,
 		subtitle: '={{$parameter["events"].join(", ")}}',
