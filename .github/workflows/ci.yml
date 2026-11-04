@@ -42,6 +42,10 @@ jobs:
       - name: Run lint
         run: 'npm run lint'
 
+      - name: Fichiers de marque
+        # Icônes du nœud = copies du paquet @agentova-ai-company/brand.
+        run: 'npm run check:brand'
+
       - name: Run tests
         run: 'npm test'
 

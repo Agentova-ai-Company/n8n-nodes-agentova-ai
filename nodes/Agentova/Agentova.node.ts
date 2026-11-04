@@ -6,7 +6,7 @@ export class Agentova implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Agentova',
 		name: 'agentova',
-		icon: { light: 'file:agentova.svg', dark: 'file:agentova.dark.svg' },
+		icon: { light: 'file:mark-ink.svg', dark: 'file:mark-white.svg' },
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',

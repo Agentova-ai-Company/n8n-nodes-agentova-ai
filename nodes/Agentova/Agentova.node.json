@@ -2,16 +2,16 @@
 	"node": "n8n-nodes-agentova-ai",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
-	"categories": ["Development", "Developer Tools"],
+	"categories": ["Development"],
 	"resources": {
 		"credentialDocumentation": [
 			{
-				"url": "https://github.com/Agentova-ai-Company/n8n-nodes-agentova-ai#credentials"
+				"url": "https://docs.agentova.ai/n8n/credentials"
 			}
 		],
 		"primaryDocumentation": [
 			{
-				"url": "https://github.com/Agentova-ai-Company/n8n-nodes-agentova-ai"
+				"url": "https://docs.agentova.ai/n8n/overview"
 			}
 		]
 	}
