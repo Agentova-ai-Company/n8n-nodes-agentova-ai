@@ -34,8 +34,17 @@ export const automationListDescription: INodeProperties[] = [
 					properties: {
 						continue: '={{ $response.body.has_more }}',
 						request: {
+							// n8n REMPLACE la query string de la requête par celle-ci à
+							// chaque page (étalement superficiel des options) : sans les
+							// reporter, `limit` et les filtres disparaissent dès la page 2.
+							// `$request` est la requête d'origine ; un filtre non choisi
+							// vaut `undefined` et n'est pas envoyé.
 							qs: {
 								cursor: '={{ $response.body.next_cursor }}',
+								limit: '={{ $request.qs.limit }}',
+								status: '={{ $request.qs.status }}',
+								type: '={{ $request.qs.type }}',
+								agent_id: '={{ $request.qs.agent_id }}',
 							},
 						},
 					},
