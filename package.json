@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-agentova-ai",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "n8n community node for the Agentova public API — manage automations and receive workspace events (leads, runs, status changes) via webhooks.",
   "license": "MIT",
   "homepage": "https://github.com/Agentova-ai-Company/n8n-nodes-agentova-ai#readme",
