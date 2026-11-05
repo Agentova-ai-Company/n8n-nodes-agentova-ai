@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- **Agentova** node, _List automations_ with _Return All_: every page now keeps the full page size (100) and the Status, Type and Agent ID filters. n8n replaces the query string on each page, so from page 2 onward the request used to carry only the cursor: pages fell back to 25 automations and the filters were ignored.
+
 ## 1.0.0
 
 First public release, built on version 1.0.0 of the Agentova public API.

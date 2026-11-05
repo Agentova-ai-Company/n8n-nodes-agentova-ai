@@ -87,6 +87,28 @@ describe('Agentova node vs. the contract annex (annexes/openapi-v1.yaml)', () =>
 		});
 	});
 
+	it('Return All carries `limit` and every filter to the next pages (n8n replaces the query string on each page)', () => {
+		const returnAll = automationDescription.find((property) => property.name === 'returnAll');
+		const filters = automationDescription.find((property) => property.name === 'filters');
+		const pagination = returnAll?.routing?.operations?.pagination;
+		const nextPageQs =
+			pagination && typeof pagination === 'object' && pagination.type === 'generic'
+				? pagination.properties.request.qs
+				: undefined;
+
+		const firstPageParams = [
+			'limit',
+			...((filters?.options ?? []) as INodeProperties[]).map(
+				(filter) => filter.routing?.send?.property,
+			),
+		];
+
+		expect(nextPageQs?.cursor).toBe('={{ $response.body.next_cursor }}');
+		for (const param of firstPageParams) {
+			expect(nextPageQs?.[param as string]).toBe(`={{ $request.qs.${param} }}`);
+		}
+	});
+
 	it('every ErrorCode of the contract has its own English message (the API message is only a fallback)', () => {
 		expect(Object.values(AGENTOVA_ERROR).sort()).toEqual(schemaEnum('ErrorCode'));
 
